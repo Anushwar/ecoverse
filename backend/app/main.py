@@ -411,6 +411,30 @@ async def analyze_footprint(request: AnalyzeFootprintRequest):
 
         activities = db_manager.get_user_activities(user_id, 100)
 
+        # Filter activities if a specific date is provided (format: YYYY-MM-DD)
+        filtered_activities = activities
+        date_format_length = 10
+        expected_hyphens = 2
+        if (
+            request.timeframe
+            and len(request.timeframe) == date_format_length
+            and request.timeframe.count("-") == expected_hyphens
+        ):
+            try:
+                # Parse the date and filter activities for that specific day
+                target_date = datetime.fromisoformat(request.timeframe).date()
+                filtered_activities = [
+                    act for act in activities if act.date == target_date
+                ]
+                logger.info(
+                    f"Filtered to {len(filtered_activities)} activities for date {target_date}"
+                )
+            except (ValueError, TypeError) as e:
+                logger.warning(
+                    f"Invalid date format '{request.timeframe}', using all activities: {e}"
+                )
+                filtered_activities = activities
+
         # Convert activities to dict format for dataset processor
         activity_dicts = [
             {
@@ -421,13 +445,13 @@ async def analyze_footprint(request: AnalyzeFootprintRequest):
                 "unit": act.unit,
                 "date": act.date.isoformat(),
             }
-            for act in activities
+            for act in filtered_activities
         ]
 
         # Get AI analysis
         analysis_data = {
             "user": user,
-            "activities": activities,
+            "activities": filtered_activities,
             "timeframe": request.timeframe,
             "question": request.question,
         }
@@ -446,7 +470,7 @@ async def analyze_footprint(request: AnalyzeFootprintRequest):
 
         # Get Gemini insights
         gemini_insight = await orchestrator.get_gemini_insights(
-            activities, request.question
+            filtered_activities, request.question
         )
 
         # Save insights to database

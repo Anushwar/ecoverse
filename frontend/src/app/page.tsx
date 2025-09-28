@@ -98,7 +98,9 @@ function HomeContent() {
   const [user, setUser] = useState<any>(null);
   const [analysisQuestion, setAnalysisQuestion] = useState("");
   const [showClearMenu, setShowClearMenu] = useState(false);
-  const [hiddenRecommendations, setHiddenRecommendations] = useState<Set<string>>(new Set());
+  const [hiddenRecommendations, setHiddenRecommendations] = useState<
+    Set<string>
+  >(new Set());
 
   useEffect(() => {
     loadInitialData();
@@ -106,16 +108,26 @@ function HomeContent() {
 
   // Sync URL with active tab
   useEffect(() => {
-    const tabFromUrl = searchParams.get('tab');
-    if (tabFromUrl && ['dashboard', 'activities', 'insights', 'datasets', 'recommendations'].includes(tabFromUrl)) {
+    const tabFromUrl = searchParams?.get("tab");
+    if (
+      tabFromUrl &&
+      [
+        "dashboard",
+        "activities",
+        "insights",
+        "datasets",
+        "recommendations",
+      ].includes(tabFromUrl)
+    ) {
       setActiveTab(tabFromUrl);
     }
   }, [searchParams]);
 
   // Update URL when tab changes
   const updateUrlTab = (tabId: string) => {
+    if (!searchParams) return;
     const params = new URLSearchParams(searchParams.toString());
-    params.set('tab', tabId);
+    params.set("tab", tabId);
     router.push(`?${params.toString()}`, { scroll: false });
   };
 
@@ -123,13 +135,13 @@ function HomeContent() {
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Element;
-      if (showClearMenu && !target.closest('.clear-menu-container')) {
+      if (showClearMenu && !target.closest(".clear-menu-container")) {
         setShowClearMenu(false);
       }
     };
 
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
   }, [showClearMenu]);
 
   const loadInitialData = async () => {
@@ -212,45 +224,115 @@ function HomeContent() {
 
     try {
       setAnalysisLoading(true);
+
+      // Auto-scroll to AI analysis section when starting analysis
+      setTimeout(() => {
+        const element = document.getElementById("ai-analysis-section");
+        if (element) {
+          element.scrollIntoView({ behavior: "smooth", block: "start" });
+          // Focus on the input for better UX
+          setTimeout(() => {
+            const input = element.querySelector(
+              'input[type="text"]'
+            ) as HTMLInputElement;
+            if (input) {
+              input.focus();
+            }
+          }, 300);
+        }
+      }, 100);
+
+      // Check if we have a specific date to analyze
+      const specificDate = (window as any).insightAnalysisDate;
+      let timeframe = "30d"; // default
+
+      if (specificDate) {
+        // Use the specific date for analysis
+        timeframe = specificDate;
+      }
+
       const analysis = await api.analyzeFootprint(
-        analysisQuestion || undefined
+        analysisQuestion || undefined,
+        timeframe
       );
       setAnalysisResponse(analysis);
+
+      // Clear the date filter after analysis
+      if (specificDate) {
+        delete (window as any).insightAnalysisDate;
+      }
 
       // Update insights and recommendations with new data, avoiding duplicates
       if (analysis.insights) {
         setInsights((prev) => {
-          const existingIds = new Set(prev.map(insight => insight.id));
-          const newInsights = analysis.insights.filter(insight => !existingIds.has(insight.id));
+          const existingIds = new Set(prev.map((insight) => insight.id));
+          const newInsights = analysis.insights.filter(
+            (insight) => !existingIds.has(insight.id)
+          );
           return [...newInsights, ...prev].slice(0, 20);
         });
       }
       if (analysis.recommendations) {
         setRecommendations((prev) => {
-          const existingIds = new Set(prev.map(rec => rec.id));
-          const newRecs = analysis.recommendations.filter(rec => !existingIds.has(rec.id));
+          const existingIds = new Set(prev.map((rec) => rec.id));
+          const newRecs = analysis.recommendations.filter(
+            (rec) => !existingIds.has(rec.id)
+          );
           return [...newRecs, ...prev].slice(0, 15);
         });
       }
     } catch (error) {
       console.error("Error analyzing footprint:", error);
+      addToast({
+        type: "error",
+        title: "Analysis Failed",
+        message: "Unable to generate AI analysis. Please try again.",
+      });
     } finally {
       setAnalysisLoading(false);
     }
   };
 
   const handleLearnMore = async (insight: any) => {
+    // Extract date from insight if available
+    const insightDate = insight.data?.date;
+
     // Set the analysis question and switch to dashboard for analysis
-    setAnalysisQuestion(`Provide detailed analysis and recommendations for: ${insight.title}`);
+    setAnalysisQuestion(
+      `Provide detailed analysis and recommendations for: ${insight.title}`
+    );
+
+    // If we have a specific date, store it for the analysis
+    if (insightDate) {
+      // Store the specific date for filtering
+      (window as any).insightAnalysisDate = insightDate;
+    } else {
+      // Clear any previous date filter
+      delete (window as any).insightAnalysisDate;
+    }
+
     setActiveTab("dashboard");
     updateUrlTab("dashboard");
-    // Scroll to analysis section
+    // Scroll to analysis section with longer delay to ensure rendering
     setTimeout(() => {
-      document.getElementById('ai-analysis-section')?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
+      const element = document.getElementById("ai-analysis-section");
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "start" });
+        // Also focus on the input for better UX
+        const input = element.querySelector(
+          'input[type="text"]'
+        ) as HTMLInputElement;
+        if (input) {
+          input.focus();
+        }
+      }
+    }, 500);
   };
 
-  const handleRecommendationAction = (recommendationId: string, action: 'accept' | 'later' | 'reject') => {
+  const handleRecommendationAction = (
+    recommendationId: string,
+    action: "accept" | "later" | "reject"
+  ) => {
     console.log(`Recommendation ${recommendationId} was ${action}ed`);
 
     // Here you could implement additional logic like:
@@ -260,57 +342,65 @@ function HomeContent() {
     // - For now, we'll just log the action
 
     // Show appropriate toast based on action
-    if (action === 'accept') {
+    if (action === "accept") {
       addToast({
-        type: 'success',
-        title: 'Recommendation Accepted!',
-        message: 'Added to your action plan. Great choice for reducing your carbon footprint!',
+        type: "success",
+        title: "Recommendation Accepted!",
+        message:
+          "Added to your action plan. Great choice for reducing your carbon footprint!",
       });
-      console.log('Recommendation accepted and added to action plan');
-    } else if (action === 'later') {
+      console.log("Recommendation accepted and added to action plan");
+    } else if (action === "later") {
       addToast({
-        type: 'info',
-        title: 'Saved for Later',
-        message: 'We\'ll remind you about this recommendation in the future.',
+        type: "info",
+        title: "Saved for Later",
+        message: "We'll remind you about this recommendation in the future.",
       });
-      console.log('Recommendation saved for later');
-    } else if (action === 'reject') {
+      console.log("Recommendation saved for later");
+    } else if (action === "reject") {
       // Hide the recommendation
-      setHiddenRecommendations(prev => new Set([...prev, recommendationId]));
+      setHiddenRecommendations((prev) => {
+        const newSet = new Set(prev);
+        newSet.add(recommendationId);
+        return newSet;
+      });
 
       addToast({
-        type: 'info',
-        title: 'Recommendation Dismissed',
-        message: 'Recommendation removed from your list.',
+        type: "info",
+        title: "Recommendation Dismissed",
+        message: "Recommendation removed from your list.",
       });
-      console.log('Recommendation dismissed');
+      console.log("Recommendation dismissed");
     }
   };
 
-  const handleClearData = async (dataType: 'all' | 'activities' | 'insights' | 'recommendations') => {
-    const confirmMessage = dataType === 'all'
-      ? 'Are you sure you want to clear ALL data? This action cannot be undone.'
-      : `Are you sure you want to clear all ${dataType}? This action cannot be undone.`;
+  const handleClearData = async (
+    dataType: "all" | "activities" | "insights" | "recommendations"
+  ) => {
+    const confirmMessage =
+      dataType === "all"
+        ? "Are you sure you want to clear ALL data? This action cannot be undone."
+        : `Are you sure you want to clear all ${dataType}? This action cannot be undone.`;
 
     if (!confirm(confirmMessage)) {
       return;
     }
 
     try {
-      if (dataType === 'all' || dataType === 'activities') {
+      if (dataType === "all" || dataType === "activities") {
         setActivities([]);
       }
-      if (dataType === 'all' || dataType === 'insights') {
+      if (dataType === "all" || dataType === "insights") {
         setInsights([]);
       }
-      if (dataType === 'all' || dataType === 'recommendations') {
+      if (dataType === "all" || dataType === "recommendations") {
         setRecommendations([]);
         setHiddenRecommendations(new Set()); // Reset hidden recommendations
       }
-      if (dataType === 'all') {
+      if (dataType === "all") {
         setDashboardData(null);
         setAnalysisResponse(null);
-        setAnalysisQuestion('');
+        setAnalysisQuestion("");
       }
 
       // In a real app, you would also clear data from the backend
@@ -318,17 +408,21 @@ function HomeContent() {
 
       // Show success toast
       addToast({
-        type: 'success',
-        title: `${dataType === 'all' ? 'All data' : dataType.charAt(0).toUpperCase() + dataType.slice(1)} cleared`,
-        message: 'Data has been successfully removed from your dashboard.',
+        type: "success",
+        title: `${
+          dataType === "all"
+            ? "All data"
+            : dataType.charAt(0).toUpperCase() + dataType.slice(1)
+        } cleared`,
+        message: "Data has been successfully removed from your dashboard.",
       });
-
     } catch (error) {
-      console.error('Error clearing data:', error);
+      console.error("Error clearing data:", error);
       addToast({
-        type: 'error',
-        title: 'Failed to clear data',
-        message: 'An error occurred while clearing your data. Please try again.',
+        type: "error",
+        title: "Failed to clear data",
+        message:
+          "An error occurred while clearing your data. Please try again.",
       });
     }
   };
@@ -339,27 +433,27 @@ function HomeContent() {
 
     // Handle tab-specific loading for data that might need refreshing
     if (tabId === "insights" && insights.length === 0) {
-      setTabLoading(prev => ({ ...prev, insights: true }));
+      setTabLoading((prev) => ({ ...prev, insights: true }));
       try {
         const freshInsights = await api.getInsights(15);
         setInsights(freshInsights || []);
       } catch (error) {
         console.error("Error loading insights:", error);
       } finally {
-        setTabLoading(prev => ({ ...prev, insights: false }));
+        setTabLoading((prev) => ({ ...prev, insights: false }));
       }
     } else if (tabId === "recommendations" && recommendations.length === 0) {
-      setTabLoading(prev => ({ ...prev, recommendations: true }));
+      setTabLoading((prev) => ({ ...prev, recommendations: true }));
       try {
         const freshRecommendations = await api.getRecommendations(10);
         setRecommendations(freshRecommendations || []);
       } catch (error) {
         console.error("Error loading recommendations:", error);
       } finally {
-        setTabLoading(prev => ({ ...prev, recommendations: false }));
+        setTabLoading((prev) => ({ ...prev, recommendations: false }));
       }
     } else if (tabId === "datasets" && !datasetSummary) {
-      setTabLoading(prev => ({ ...prev, datasets: true }));
+      setTabLoading((prev) => ({ ...prev, datasets: true }));
       try {
         const [summaryResult, insightsResult] = await Promise.all([
           api.getDatasetSummary().catch(() => null),
@@ -370,7 +464,7 @@ function HomeContent() {
       } catch (error) {
         console.error("Error loading dataset data:", error);
       } finally {
-        setTabLoading(prev => ({ ...prev, datasets: false }));
+        setTabLoading((prev) => ({ ...prev, datasets: false }));
       }
     }
   };
@@ -408,8 +502,12 @@ function HomeContent() {
             transition={{ delay: 0.2 }}
             className="mt-6 text-center"
           >
-            <h3 className="text-xl font-bold text-gray-800 mb-2">🌱 EcoVerse</h3>
-            <p className="text-gray-600">Initializing your carbon footprint dashboard...</p>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">
+              🌱 EcoVerse
+            </h3>
+            <p className="text-gray-600">
+              Initializing your carbon footprint dashboard...
+            </p>
           </motion.div>
         </motion.div>
       </div>
@@ -491,7 +589,7 @@ function HomeContent() {
                   </div>
                   <button
                     onClick={() => {
-                      handleClearData('activities');
+                      handleClearData("activities");
                       setShowClearMenu(false);
                     }}
                     className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
@@ -501,7 +599,7 @@ function HomeContent() {
                   </button>
                   <button
                     onClick={() => {
-                      handleClearData('insights');
+                      handleClearData("insights");
                       setShowClearMenu(false);
                     }}
                     className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
@@ -511,7 +609,7 @@ function HomeContent() {
                   </button>
                   <button
                     onClick={() => {
-                      handleClearData('recommendations');
+                      handleClearData("recommendations");
                       setShowClearMenu(false);
                     }}
                     className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
@@ -522,7 +620,7 @@ function HomeContent() {
                   <div className="border-t border-gray-100">
                     <button
                       onClick={() => {
-                        handleClearData('all');
+                        handleClearData("all");
                         setShowClearMenu(false);
                       }}
                       className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
@@ -628,14 +726,20 @@ function HomeContent() {
                     <div className="flex justify-end mb-4">
                       <button
                         onClick={async () => {
-                          setTabLoading(prev => ({ ...prev, insights: true }));
+                          setTabLoading((prev) => ({
+                            ...prev,
+                            insights: true,
+                          }));
                           try {
                             const freshInsights = await api.getInsights(15);
                             setInsights(freshInsights || []);
                           } catch (error) {
                             console.error("Error refreshing insights:", error);
                           } finally {
-                            setTabLoading(prev => ({ ...prev, insights: false }));
+                            setTabLoading((prev) => ({
+                              ...prev,
+                              insights: false,
+                            }));
                           }
                         }}
                         disabled={tabLoading.insights}
@@ -660,9 +764,13 @@ function HomeContent() {
                     ) : (
                       <div className="text-center text-gray-500 py-12">
                         <ExclamationCircleIcon className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-                        <h3 className="text-lg font-medium text-gray-900 mb-2">No insights available yet</h3>
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">
+                          No insights available yet
+                        </h3>
                         <p className="text-gray-600 mb-4">
-                          Generate AI insights to understand your carbon footprint patterns and get personalized recommendations.
+                          Generate AI insights to understand your carbon
+                          footprint patterns and get personalized
+                          recommendations.
                         </p>
                         <button
                           onClick={handleAnalyzeFootprint}
@@ -699,20 +807,25 @@ function HomeContent() {
                 {tabLoading.recommendations ? (
                   <div className="flex items-center justify-center py-12">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
-                    <span className="text-gray-600">Loading recommendations...</span>
+                    <span className="text-gray-600">
+                      Loading recommendations...
+                    </span>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {recommendations.length > 0 ? (
                       recommendations
-                        .filter(recommendation => !hiddenRecommendations.has(recommendation.id))
+                        .filter(
+                          (recommendation) =>
+                            !hiddenRecommendations.has(recommendation.id)
+                        )
                         .map((recommendation) => (
-                        <RecommendationCard
-                          key={recommendation.id}
-                          recommendation={recommendation}
-                          onAction={handleRecommendationAction}
-                        />
-                      ))
+                          <RecommendationCard
+                            key={recommendation.id}
+                            recommendation={recommendation}
+                            onAction={handleRecommendationAction}
+                          />
+                        ))
                     ) : (
                       <div className="col-span-3 text-center text-gray-500 py-8">
                         <SparklesIcon className="h-12 w-12 mx-auto mb-2 text-gray-300" />

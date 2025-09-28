@@ -372,14 +372,13 @@ class GeminiInsightAgent(BaseAgent):
         # Optimized generation config for speed and quality
         generation_config = genai.GenerationConfig(
             temperature=0.7,  # Balanced creativity and consistency
-            top_p=0.8,       # Focus on most likely tokens
-            top_k=40,        # Reasonable candidate pool
+            top_p=0.8,  # Focus on most likely tokens
+            top_k=40,  # Reasonable candidate pool
             max_output_tokens=1024,  # Sufficient for JSON responses
         )
 
         self.model = genai.GenerativeModel(
-            "gemini-2.5-flash",
-            generation_config=generation_config
+            "gemini-2.0-flash-exp", generation_config=generation_config
         )
         self.capabilities = [
             "natural-language-insights",
@@ -419,12 +418,24 @@ class GeminiInsightAgent(BaseAgent):
         # Calculate additional metrics for enhanced analysis
         avg_daily_emissions = total_emissions / 30 if activities else 0
         annualized_emissions = total_emissions * 12
-        highest_category = max(category_breakdown.items(), key=lambda x: x[1]) if category_breakdown else ("none", 0)
-        lowest_category = min(category_breakdown.items(), key=lambda x: x[1]) if category_breakdown else ("none", 0)
+        highest_category = (
+            max(category_breakdown.items(), key=lambda x: x[1])
+            if category_breakdown
+            else ("none", 0)
+        )
+        lowest_category = (
+            min(category_breakdown.items(), key=lambda x: x[1])
+            if category_breakdown
+            else ("none", 0)
+        )
 
         # Recent activity trends
         recent_activities = activities[-5:] if len(activities) >= 5 else activities
-        recent_avg = sum(a.carbon_emission for a in recent_activities) / len(recent_activities) if recent_activities else 0
+        recent_avg = (
+            sum(a.carbon_emission for a in recent_activities) / len(recent_activities)
+            if recent_activities
+            else 0
+        )
 
         context = f"""
 ## USER PROFILE & CONTEXT:
@@ -442,8 +453,8 @@ class GeminiInsightAgent(BaseAgent):
 ## CATEGORY BREAKDOWN & PATTERNS:
 {json.dumps(category_breakdown, indent=2)}
 
-- **Highest Impact Category**: {highest_category[0]} ({highest_category[1]:.2f} kg CO2e, {(highest_category[1]/total_emissions*100):.1f}% of total)
-- **Lowest Impact Category**: {lowest_category[0]} ({lowest_category[1]:.2f} kg CO2e, {(lowest_category[1]/total_emissions*100):.1f}% of total)
+- **Highest Impact Category**: {highest_category[0]} ({highest_category[1]:.2f} kg CO2e, {(highest_category[1] / total_emissions * 100):.1f}% of total)
+- **Lowest Impact Category**: {lowest_category[0]} ({lowest_category[1]:.2f} kg CO2e, {(lowest_category[1] / total_emissions * 100):.1f}% of total)
 
 ## RECENT TRENDS:
 - **Recent Activity Average**: {recent_avg:.2f} kg CO2e per activity
@@ -496,14 +507,24 @@ Ensure all recommendations are specific, measurable, and include projected quant
                 None, self.model.generate_content, prompt
             )
 
-            # Parse JSON from response using proper response parts accessor
+            # Enhanced response parsing using proper parts-based approach (no response.text)
             response_text = ""
-            if response.candidates and response.candidates[0].content.parts:
-                response_text = response.candidates[0].content.parts[0].text.strip()
-            else:
-                # No accessible response text
-                raise Exception("No accessible response parts found in Gemini response")
+            if hasattr(response, "candidates") and response.candidates:
+                # Primary: Use candidates structure
+                candidate = response.candidates[0]
+                if hasattr(candidate, "content") and candidate.content:
+                    if hasattr(candidate.content, "parts") and candidate.content.parts:
+                        response_text = candidate.content.parts[0].text.strip()
+            elif hasattr(response, "parts") and response.parts:
+                # Fallback: Direct parts structure
+                response_text = response.parts[0].text.strip()
 
+            if not response_text:
+                logger.warning("No text found in Gemini response structure")
+                msg = "No accessible response text found in Gemini response"
+                raise Exception(msg)
+
+            # Clean up JSON formatting
             if response_text.startswith("```json"):
                 response_text = response_text[7:-3]
             elif response_text.startswith("```"):
@@ -513,6 +534,9 @@ Ensure all recommendations are specific, measurable, and include projected quant
 
         except Exception as e:
             self.log(f"Error parsing Gemini response: {e}")
+            logger.error(
+                f"Full Gemini response debug: {response if 'response' in locals() else 'No response object'}"
+            )
             return self._fallback_insight_dict()
 
     def _fallback_insight(
@@ -550,14 +574,13 @@ class AgentOrchestrator:
             # Optimized generation config for speed and quality
             generation_config = genai.GenerationConfig(
                 temperature=0.7,  # Balanced creativity and consistency
-                top_p=0.8,       # Focus on most likely tokens
-                top_k=40,        # Reasonable candidate pool
+                top_p=0.8,  # Focus on most likely tokens
+                top_k=40,  # Reasonable candidate pool
                 max_output_tokens=2048,  # Sufficient for detailed responses
             )
 
             self.gemini_model = genai.GenerativeModel(
-                "gemini-2.5-flash",
-                generation_config=generation_config
+                "gemini-2.0-flash-exp", generation_config=generation_config
             )
         else:
             self.gemini_model = None
@@ -675,13 +698,21 @@ class AgentOrchestrator:
                 None, self.gemini_model.generate_content, prompt
             )
 
-            # Extract response text using proper response parts accessor
+            # Extract response text using proper parts-based approach (no response.text)
             response_text = ""
-            if response.candidates and response.candidates[0].content.parts:
-                response_text = response.candidates[0].content.parts[0].text.strip()
-            else:
-                # No accessible response text
-                raise Exception("No accessible response parts found in Gemini response")
+            if hasattr(response, "candidates") and response.candidates:
+                # Primary: Use candidates structure
+                candidate = response.candidates[0]
+                if hasattr(candidate, "content") and candidate.content:
+                    if hasattr(candidate.content, "parts") and candidate.content.parts:
+                        response_text = candidate.content.parts[0].text.strip()
+            elif hasattr(response, "parts") and response.parts:
+                # Fallback: Direct parts structure
+                response_text = response.parts[0].text.strip()
+
+            if not response_text:
+                msg = "No accessible response parts found in Gemini response"
+                raise Exception(msg)
 
             return {
                 "summary": response_text,
@@ -722,26 +753,63 @@ class AgentOrchestrator:
         return "; ".join(summary_parts)
 
     def _extract_recommendations_from_text(self, text: str) -> list[str]:
-        """Extract actionable recommendations from Gemini response"""
+        """Extract actionable recommendations from Gemini response with deduplication"""
         recommendations = []
+        seen_recommendations = set()
         lines = text.split("\n")
+        min_rec_length = 15
+        similarity_threshold = 30
 
-        for line in lines:
-            line = line.strip()
-            # Look for recommendations (lines that start with numbers, bullets, or recommendation keywords)
-            if line and (
-                line[0].isdigit()
-                or line.startswith("-")
-                or line.startswith("•")
-                or "recommend" in line.lower()
-                or "suggest" in line.lower()
-                or "reduce" in line.lower()
-                or "switch" in line.lower()
+        for original_line in lines:
+            processed_line = original_line.strip()
+            # Look for recommendations (lines that start with numbers, bullets,
+            # or recommendation keywords)
+            if processed_line and (
+                processed_line[0].isdigit()
+                or processed_line.startswith("-")
+                or processed_line.startswith("•")
+                or "recommend" in processed_line.lower()
+                or "suggest" in processed_line.lower()
+                or "reduce" in processed_line.lower()
+                or "switch" in processed_line.lower()
+                or "try" in processed_line.lower()
+                or "consider" in processed_line.lower()
             ):
-                # Clean up the line
-                clean_line = line.lstrip("0123456789.-• ").strip()
-                if len(clean_line) > 10:  # Only add substantial recommendations
-                    recommendations.append(clean_line)
+                # Clean up the line - remove markdown and formatting
+                clean_line = (
+                    processed_line.lstrip("0123456789.-• ")
+                    .replace("**", "")
+                    .replace("*", "")
+                    .replace("`", "")
+                    .strip()
+                )
+
+                if len(clean_line) > min_rec_length:
+                    # Normalize for duplicate detection
+                    normalized = (
+                        clean_line.lower().replace(".", "").replace(",", "").strip()
+                    )
+
+                    # Check for duplicates (exact match or significant overlap)
+                    is_duplicate = False
+                    for seen in seen_recommendations:
+                        if (
+                            normalized == seen
+                            or (
+                                len(normalized) > similarity_threshold
+                                and seen in normalized
+                            )
+                            or (len(seen) > similarity_threshold and normalized in seen)
+                        ):
+                            is_duplicate = True
+                            break
+
+                    excluded_prefixes = ("analysis", "summary", "in conclusion")
+                    if not is_duplicate and not clean_line.lower().startswith(
+                        excluded_prefixes
+                    ):
+                        seen_recommendations.add(normalized)
+                        recommendations.append(clean_line)
 
         return recommendations[:5]  # Limit to top 5 recommendations
 
@@ -749,7 +817,7 @@ class AgentOrchestrator:
         """Execute the complete AI workflow"""
         return await self.analyze_carbon_footprint(input_data)
 
-    def get_agent(self, agent_id: str) -> Optional[BaseAgent]:
+    def get_agent(self, agent_id: str) -> BaseAgent | None:
         """Get agent by ID"""
         return self.agents.get(agent_id)
 

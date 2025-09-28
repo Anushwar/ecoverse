@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useRef, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   BeakerIcon,
   SparklesIcon,
@@ -7,13 +7,9 @@ import {
   ChevronUpIcon,
   LightBulbIcon,
   CheckCircleIcon,
-  ExclamationTriangleIcon,
   InformationCircleIcon,
-  ChartBarIcon,
-  CalendarIcon,
-  ArrowTrendingUpIcon,
-  ArrowTrendingDownIcon,
-} from '@heroicons/react/24/outline';
+  ChatBubbleBottomCenterTextIcon,
+} from "@heroicons/react/24/outline";
 
 interface GeminiInsight {
   summary: string;
@@ -38,91 +34,108 @@ const EnhancedAIAnalysis = ({
   geminiInsight,
 }: EnhancedAIAnalysisProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [activeSection, setActiveSection] = useState<string>('summary');
+  const chatSectionRef = useRef<HTMLDivElement>(null);
 
-  // Clean markdown formatting from text
+  // Auto-scroll when analysis starts
+  useEffect(() => {
+    if (analysisLoading && chatSectionRef.current) {
+      chatSectionRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+  }, [analysisLoading]);
+
+  // Enhanced markdown cleaning function
   const cleanMarkdown = (text: string): string => {
     return text
-      .replace(/#{1,6}\s+/g, '') // Remove headers
-      .replace(/\*\*(.*?)\*\*/g, '$1') // Remove **bold**
-      .replace(/\*(.*?)\*/g, '$1') // Remove *italic*
-      .replace(/`(.*?)`/g, '$1') // Remove `code`
-      .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Remove [links](url)
-      .replace(/^[-*+]\s+/gm, '• ') // Convert - to bullet points
-      .replace(/^\d+\.\s+/gm, '') // Remove numbered lists
+      .replace(/#{1,6}\s+/g, "") // Remove headers
+      .replace(/\*\*(.*?)\*\*/g, "$1") // Remove **bold**
+      .replace(/\*(.*?)\*/g, "$1") // Remove *italic*
+      .replace(/`(.*?)`/g, "$1") // Remove `code`
+      .replace(/\[(.*?)\]\(.*?\)/g, "$1") // Remove [links](url)
+      .replace(/^[-*+]\s+/gm, "• ") // Convert - to bullet points
+      .replace(/^\d+\.\s+/gm, "") // Remove numbered lists
+      .replace(/>\s+/gm, "") // Remove blockquotes
+      .replace(/~~(.*?)~~/g, "$1") // Remove ~~strikethrough~~
+      .replace(/_{2,}(.*?)_{2,}/g, "$1") // Remove __underline__
+      .replace(/\s{2,}/g, " ") // Normalize multiple spaces
       .trim();
   };
 
-  // Parse structured content from Gemini response
-  const parseStructuredContent = (text: string) => {
-    const sections = {
-      impact_assessment: '',
-      recommendations: [] as string[],
-      benchmarking: '',
-      roadmap: '',
-      raw_content: cleanMarkdown(text),
-    };
+  // Enhanced recommendation extraction with deduplication
+  const extractRecommendations = (text: string): string[] => {
+    const lines = text.split("\n");
+    const recommendations: string[] = []; // Use array instead of Set
+    const seenRecommendations: string[] = []; // Track seen recommendations
 
-    // Try to extract structured sections
-    const impactMatch = text.match(/### 1\. IMPACT ASSESSMENT([\s\S]*?)### 2\./);
-    if (impactMatch) sections.impact_assessment = cleanMarkdown(impactMatch[1].trim());
+    for (const line of lines) {
+      const cleaned = line.trim();
+      if (
+        cleaned &&
+        cleaned.length > 20 && // Minimum length check
+        (cleaned.startsWith("•") ||
+          cleaned.startsWith("-") ||
+          cleaned.startsWith("*") ||
+          /^\d+\./.test(cleaned) ||
+          cleaned.toLowerCase().includes("recommend") ||
+          cleaned.toLowerCase().includes("suggest") ||
+          cleaned.toLowerCase().includes("consider") ||
+          cleaned.toLowerCase().includes("try") ||
+          cleaned.toLowerCase().includes("switch"))
+      ) {
+        const cleanRec = cleanMarkdown(cleaned.replace(/^[•\-*\d\.]\s*/, ""));
+        if (
+          cleanRec.length > 15 &&
+          !cleanRec.toLowerCase().startsWith("analysis")
+        ) {
+          // Normalize recommendation for duplicate detection
+          const normalized = cleanRec
+            .toLowerCase()
+            .replace(/[.,!?;]/g, "")
+            .trim();
 
-    const recommendationsMatch = text.match(/### 2\. ACTIONABLE RECOMMENDATIONS([\s\S]*?)### 3\./);
-    if (recommendationsMatch) {
-      const recText = recommendationsMatch[1];
-      // Extract bullet points or numbered items
-      const bullets = recText.match(/- \*\*(.*?)\*\*: (.*?)(?=\n- \*\*|$)/gs);
-      if (bullets) {
-        sections.recommendations = bullets.map(bullet => cleanMarkdown(bullet.replace(/- \*\*(.*?)\*\*: /, '$1: ')));
+          // Check for similar recommendations (simple similarity check)
+          const isDuplicate = seenRecommendations.some(
+            (existing) =>
+              normalized === existing ||
+              (normalized.length > 30 &&
+                existing.includes(normalized.slice(0, 30))) ||
+              (existing.length > 30 &&
+                normalized.includes(existing.slice(0, 30)))
+          );
+
+          if (!isDuplicate) {
+            seenRecommendations.push(normalized);
+            recommendations.push(cleanRec);
+          }
+        }
       }
     }
-
-    const benchmarkingMatch = text.match(/### 3\. BENCHMARKING & TRENDS([\s\S]*?)### 4\./);
-    if (benchmarkingMatch) sections.benchmarking = cleanMarkdown(benchmarkingMatch[1].trim());
-
-    const roadmapMatch = text.match(/### 4\. IMPLEMENTATION ROADMAP([\s\S]*?)$/);
-    if (roadmapMatch) sections.roadmap = cleanMarkdown(roadmapMatch[1].trim());
-
-    return sections;
+    return recommendations.slice(0, 5); // Limit to 5 recommendations
   };
 
-  const structuredContent = geminiInsight ? parseStructuredContent(geminiInsight.summary || geminiInsight.insights || '') : null;
-
-  const getSeverityIcon = (type: string) => {
-    switch (type) {
-      case 'high':
-        return ExclamationTriangleIcon;
-      case 'medium':
-        return InformationCircleIcon;
-      case 'low':
-        return CheckCircleIcon;
-      default:
-        return LightBulbIcon;
-    }
-  };
-
-  const getSeverityColor = (type: string) => {
-    switch (type) {
-      case 'high':
-        return 'text-red-600 bg-red-50 border-red-200';
-      case 'medium':
-        return 'text-yellow-600 bg-yellow-50 border-yellow-200';
-      case 'low':
-        return 'text-green-600 bg-green-50 border-green-200';
-      default:
-        return 'text-blue-600 bg-blue-50 border-blue-200';
-    }
-  };
+  const displayRecommendations =
+    geminiInsight?.recommendations ||
+    (geminiInsight?.summary
+      ? extractRecommendations(geminiInsight.summary)
+      : []) ||
+    (geminiInsight?.insights
+      ? extractRecommendations(geminiInsight.insights)
+      : []);
 
   return (
-    <div className="mt-8 bg-white rounded-xl shadow-lg overflow-hidden">
+    <div
+      ref={chatSectionRef}
+      className="mt-8 bg-white rounded-xl shadow-lg overflow-hidden"
+    >
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-6 border-b">
         <h3 className="text-xl font-bold text-gray-900 flex items-center mb-4">
-          <BeakerIcon className="h-6 w-6 mr-2 text-blue-600" />
-          AI Analysis with Gemini 2.5 Flash
+          <ChatBubbleBottomCenterTextIcon className="h-6 w-6 mr-2 text-blue-600" />
+          AI Analysis Chat
           <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
-            Enhanced
+            Powered by Gemini
           </span>
         </h3>
 
@@ -163,8 +176,12 @@ const EnhancedAIAnalysis = ({
       {analysisLoading && (
         <div className="p-8 text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Generating comprehensive AI analysis...</p>
-          <p className="text-sm text-gray-500 mt-2">This may take a few moments for detailed insights</p>
+          <p className="text-gray-600">
+            Generating comprehensive AI analysis...
+          </p>
+          <p className="text-sm text-gray-500 mt-2">
+            This may take a few moments for detailed insights
+          </p>
         </div>
       )}
 
@@ -177,151 +194,93 @@ const EnhancedAIAnalysis = ({
               animate={{ opacity: 1, y: 0 }}
               className="space-y-6"
             >
-              {/* Quick Summary */}
-              <div className="bg-gradient-to-r from-green-50 to-blue-50 p-4 rounded-lg border-l-4 border-blue-500">
-                <h4 className="font-semibold text-gray-900 mb-2 flex items-center">
+              {/* Main Analysis */}
+              <div className="bg-gradient-to-r from-green-50 to-blue-50 p-6 rounded-lg border-l-4 border-blue-500">
+                <h4 className="font-semibold text-gray-900 mb-4 flex items-center">
                   <LightBulbIcon className="h-5 w-5 mr-2 text-blue-600" />
-                  Quick Summary
+                  AI Analysis & Insights
                 </h4>
-                <p className="text-gray-700 leading-relaxed">
-                  {geminiInsight.summary?.split('\n')[0] || 'Analysis completed successfully.'}
-                </p>
+                <div className="prose prose-sm max-w-none">
+                  <div className="text-gray-700 leading-relaxed space-y-4">
+                    {(
+                      geminiInsight.summary ||
+                      geminiInsight.insights ||
+                      "Analysis completed successfully."
+                    )
+                      .split("\n")
+                      .filter((line) => line.trim())
+                      .map((line, idx) => {
+                        const cleanLine = cleanMarkdown(line);
+
+                        if (!cleanLine) return null;
+
+                        // Detect if it's a header (originally had ** or # or ###)
+                        const isHeader =
+                          line.includes("**") ||
+                          line.startsWith("#") ||
+                          line.includes("###") ||
+                          line.includes("##") ||
+                          (cleanLine.length < 50 &&
+                            (cleanLine.toLowerCase().includes("analysis") ||
+                              cleanLine.toLowerCase().includes("assessment") ||
+                              cleanLine
+                                .toLowerCase()
+                                .includes("recommendation") ||
+                              cleanLine.toLowerCase().includes("insight") ||
+                              cleanLine.toLowerCase().includes("summary")));
+
+                        return isHeader ? (
+                          <h5
+                            key={idx}
+                            className="font-semibold text-gray-900 mt-4 mb-2 text-sm"
+                          >
+                            {cleanLine}
+                          </h5>
+                        ) : (
+                          <p
+                            key={idx}
+                            className="text-gray-700 text-sm leading-relaxed"
+                          >
+                            {cleanLine}
+                          </p>
+                        );
+                      })}
+                  </div>
+                </div>
               </div>
 
-              {/* Structured Content Tabs */}
-              {structuredContent && (
-                <div className="border rounded-lg">
-                  {/* Tab Headers */}
-                  <div className="flex border-b bg-gray-50 rounded-t-lg">
-                    {[
-                      { id: 'summary', name: 'Overview', icon: ChartBarIcon },
-                      { id: 'impact', name: 'Impact Assessment', icon: ArrowTrendingUpIcon },
-                      { id: 'recommendations', name: 'Recommendations', icon: CheckCircleIcon },
-                      { id: 'roadmap', name: 'Implementation', icon: CalendarIcon },
-                    ].map((tab) => (
-                      <button
-                        key={tab.id}
-                        onClick={() => setActiveSection(tab.id)}
-                        className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center transition-colors ${
-                          activeSection === tab.id
-                            ? 'text-blue-600 border-b-2 border-blue-600 bg-white'
-                            : 'text-gray-600 hover:text-gray-900'
-                        }`}
-                      >
-                        <tab.icon className="h-4 w-4 mr-2" />
-                        {tab.name}
-                      </button>
-                    ))}
+              {/* Recommendations Section */}
+              {displayRecommendations.length > 0 && (
+                <div>
+                  <h4 className="font-semibold text-gray-900 mb-4 flex items-center">
+                    <CheckCircleIcon className="h-5 w-5 mr-2 text-green-600" />
+                    Key Recommendations
+                  </h4>
+                  <div className="prose prose-sm max-w-none">
+                    <div className="text-gray-700 leading-relaxed space-y-2">
+                      {displayRecommendations.slice(0, 5).map((rec, idx) => (
+                        <p
+                          key={idx}
+                          className="text-gray-700 text-sm leading-relaxed flex items-start"
+                        >
+                          <span className="text-green-600 mr-2 mt-1 flex-shrink-0">
+                            •
+                          </span>
+                          {cleanMarkdown(rec)}
+                        </p>
+                      ))}
+                    </div>
                   </div>
+                </div>
+              )}
 
-                  {/* Tab Content */}
-                  <div className="p-4 min-h-[200px]">
-                    {activeSection === 'summary' && (
-                      <div className="prose prose-sm max-w-none">
-                        <div className="text-gray-700 leading-relaxed space-y-4">
-                          {(geminiInsight.summary || geminiInsight.insights || 'No summary available.')
-                            .split('\n')
-                            .filter(line => line.trim())
-                            .map((line, idx) => {
-                              // Remove markdown formatting
-                              const cleanLine = line
-                                .replace(/\*\*(.*?)\*\*/g, '$1') // Remove **bold**
-                                .replace(/\*(.*?)\*/g, '$1')    // Remove *italic*
-                                .replace(/^#{1,6}\s+/, '')      // Remove headers
-                                .trim();
-
-                              if (!cleanLine) return null;
-
-                              // Detect if it's a header (originally had ** or #)
-                              const isHeader = line.includes('**') || line.startsWith('#');
-
-                              return isHeader ? (
-                                <h4 key={idx} className="font-semibold text-gray-900 mt-4 mb-2">
-                                  {cleanLine}
-                                </h4>
-                              ) : (
-                                <p key={idx} className="text-gray-700">
-                                  {cleanLine}
-                                </p>
-                              );
-                            })}
-                        </div>
-                      </div>
-                    )}
-
-                    {activeSection === 'impact' && (
-                      <div className="prose prose-sm max-w-none">
-                        <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-                          <h5 className="font-semibold text-yellow-900 mb-2">Impact Assessment</h5>
-                          <p className="text-yellow-800 leading-relaxed whitespace-pre-line">
-                            {structuredContent?.impact_assessment || 'Analyzing your carbon footprint impact based on the provided data. This section will show environmental impact calculations and comparisons with benchmarks.'}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    {activeSection === 'recommendations' && (
-                      <div className="space-y-3">
-                        {structuredContent?.recommendations?.length > 0 ? (
-                          structuredContent.recommendations.map((rec, idx) => (
-                            <div key={idx} className="bg-green-50 p-4 rounded-lg border border-green-200">
-                              <div className="flex items-start">
-                                <CheckCircleIcon className="h-5 w-5 text-green-600 mr-3 mt-0.5 flex-shrink-0" />
-                                <p className="text-green-800 leading-relaxed">{rec}</p>
-                              </div>
-                            </div>
-                          ))
-                        ) : geminiInsight?.recommendations ? (
-                          geminiInsight.recommendations.map((rec, idx) => (
-                            <div key={idx} className="bg-green-50 p-4 rounded-lg border border-green-200">
-                              <div className="flex items-start">
-                                <CheckCircleIcon className="h-5 w-5 text-green-600 mr-3 mt-0.5 flex-shrink-0" />
-                                <p className="text-green-800 leading-relaxed">{rec}</p>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                            <div className="flex items-start">
-                              <CheckCircleIcon className="h-5 w-5 text-green-600 mr-3 mt-0.5 flex-shrink-0" />
-                              <div className="text-green-800 leading-relaxed">
-                                <p className="font-medium mb-2">AI-Generated Recommendations:</p>
-                                <ul className="space-y-1 text-sm">
-                                  <li>• Monitor and reduce high-emission activities</li>
-                                  <li>• Consider eco-friendly alternatives for transportation</li>
-                                  <li>• Implement energy-saving practices at home</li>
-                                  <li>• Track progress regularly to maintain improvements</li>
-                                </ul>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {activeSection === 'roadmap' && (
-                      <div className="prose prose-sm max-w-none">
-                        <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                          <h5 className="font-semibold text-purple-900 mb-2">Implementation Roadmap</h5>
-                          <div className="text-purple-800 leading-relaxed">
-                            {structuredContent?.roadmap ? (
-                              <p className="whitespace-pre-line">{structuredContent.roadmap}</p>
-                            ) : (
-                              <div className="space-y-2">
-                                <p className="font-medium">Suggested Implementation Timeline:</p>
-                                <div className="space-y-1 text-sm">
-                                  <p><strong>Week 1-2:</strong> Baseline measurement and activity tracking setup</p>
-                                  <p><strong>Week 3-4:</strong> Implement quick wins and low-hanging fruit improvements</p>
-                                  <p><strong>Month 2:</strong> Begin medium-term changes and habit formation</p>
-                                  <p><strong>Month 3+:</strong> Long-term sustainability practices and regular monitoring</p>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+              {/* Source Information */}
+              {geminiInsight.source && (
+                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                  <p className="text-sm text-gray-600 flex items-center">
+                    <InformationCircleIcon className="h-4 w-4 mr-2" />
+                    Analysis powered by: {geminiInsight.source}
+                  </p>
                 </div>
               )}
 
@@ -348,24 +307,22 @@ const EnhancedAIAnalysis = ({
                   {isExpanded && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
+                      animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
                       className="mt-4 p-4 bg-gray-50 rounded-lg overflow-hidden"
                     >
-                      <h5 className="font-semibold text-gray-900 mb-2">Complete Analysis</h5>
+                      <h5 className="font-semibold text-gray-900 mb-2">
+                        Complete Raw Analysis
+                      </h5>
                       <div className="prose prose-sm max-w-none">
                         <p className="text-gray-700 leading-relaxed whitespace-pre-line text-sm">
-                          {cleanMarkdown(geminiInsight.summary || geminiInsight.insights || 'No detailed analysis available.')}
+                          {cleanMarkdown(
+                            geminiInsight.summary ||
+                              geminiInsight.insights ||
+                              "No detailed analysis available."
+                          )}
                         </p>
                       </div>
-
-                      {geminiInsight.source && (
-                        <div className="mt-4 pt-4 border-t border-gray-200">
-                          <p className="text-xs text-gray-500">
-                            Analysis by: {geminiInsight.source}
-                          </p>
-                        </div>
-                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -378,10 +335,13 @@ const EnhancedAIAnalysis = ({
       {/* Empty State */}
       {!geminiInsight && !analysisLoading && (
         <div className="p-8 text-center">
-          <BeakerIcon className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-          <h4 className="text-lg font-medium text-gray-900 mb-2">AI Analysis Ready</h4>
+          <ChatBubbleBottomCenterTextIcon className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+          <h4 className="text-lg font-medium text-gray-900 mb-2">
+            AI Analysis Ready
+          </h4>
           <p className="text-gray-600 mb-4">
-            Ask questions about your carbon footprint to get personalized insights and recommendations from Gemini AI.
+            Ask questions about your carbon footprint to get personalized
+            insights and recommendations from Gemini AI.
           </p>
           <div className="flex flex-wrap justify-center gap-2">
             {[
