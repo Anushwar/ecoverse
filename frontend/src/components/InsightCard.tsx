@@ -165,51 +165,58 @@ const InsightCard = ({
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
-                    className="mt-3 pt-3 border-t border-gray-200"
+                    transition={{ duration: 0.2, ease: "easeInOut" }}
+                    className="mt-4 pt-4 border-t border-gray-200 bg-white/30 rounded-md p-3"
                   >
                     <div className="space-y-2">
-                      {insight.type && (
-                        <div className="flex justify-between">
-                          <span className="font-medium text-xs text-gray-600">
-                            Type:
-                          </span>
-                          <span className="text-xs text-gray-800">
-                            {insight.type}
-                          </span>
-                        </div>
-                      )}
 
                       {/* Display additional data */}
-                      {Object.entries(insight.data)
-                        .filter(
-                          ([key]) => key !== "analysis" && key !== "raw_data"
-                        )
-                        .slice(0, 5) // Limit to 5 most important items
-                        .map(([key, value]) => (
-                          <div
-                            key={key}
-                            className="flex justify-between items-start"
-                          >
-                            <span className="font-medium text-xs text-gray-600 capitalize mr-2">
-                              {key
-                                .replace(/_/g, " ")
-                                .replace(/\b\w/g, (l) => l.toUpperCase())}
-                              :
-                            </span>
-                            <span className="text-xs text-gray-800 text-right max-w-48 truncate">
-                              {formatDataValue(key, value)}
-                            </span>
-                          </div>
-                        ))}
+                      <div className="grid grid-cols-1 gap-2">
+                        {Object.entries(insight.data)
+                          .filter(
+                            ([key]) => key !== "analysis" && key !== "raw_data"
+                          )
+                          .slice(0, 8) // Show more items
+                          .map(([key, value]) => (
+                            <div
+                              key={key}
+                              className="flex justify-between items-start py-1 border-b border-gray-100 last:border-b-0"
+                            >
+                              <span className="font-medium text-xs text-gray-600 capitalize flex-shrink-0 mr-3">
+                                {key
+                                  .replace(/_/g, " ")
+                                  .replace(/\b\w/g, (l) => l.toUpperCase())}
+                              </span>
+                              <span className="text-xs text-gray-800 text-right break-words">
+                                {formatDataValue(key, value)}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
 
-                      {insight.created_at && (
-                        <div className="flex justify-between">
-                          <span className="font-medium text-xs text-gray-600">
-                            Generated:
-                          </span>
-                          <span className="text-xs text-gray-800">
-                            {new Date(insight.created_at).toLocaleDateString()}
-                          </span>
+                      {/* Additional metadata */}
+                      {(insight.type || insight.confidence) && (
+                        <div className="mt-2 pt-2 border-t border-gray-100">
+                          {insight.type && (
+                            <div className="flex justify-between py-1">
+                              <span className="font-medium text-xs text-gray-600">
+                                Insight Type:
+                              </span>
+                              <span className="text-xs text-gray-800 capitalize">
+                                {insight.type.replace(/_/g, ' ')}
+                              </span>
+                            </div>
+                          )}
+                          {insight.confidence && (
+                            <div className="flex justify-between py-1">
+                              <span className="font-medium text-xs text-gray-600">
+                                Confidence:
+                              </span>
+                              <span className="text-xs text-gray-800">
+                                {Math.round(insight.confidence * 100)}%
+                              </span>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -218,38 +225,55 @@ const InsightCard = ({
             </AnimatePresence>
           </div>
 
-          <div className="flex items-center justify-between mt-3">
-            {/* Learn More / Show Details button */}
-            <button
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="flex items-center text-xs text-gray-600 hover:text-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 rounded px-1 py-0.5"
-              disabled={!insight.data || Object.keys(insight.data).length === 0}
-            >
-              {isExpanded ? (
-                <>
-                  <ChevronUpIcon className="h-4 w-4 mr-1" />
-                  Show Less
-                </>
-              ) : (
-                <>
-                  <ChevronDownIcon className="h-4 w-4 mr-1" />
-                  {insight.data && Object.keys(insight.data).length > 0
-                    ? "Learn More"
-                    : "No details"}
-                </>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4 gap-2">
+            <div className="flex items-center gap-2">
+              {/* Learn More / Show Details button */}
+              {insight.data && Object.keys(insight.data).length > 0 && (
+                <button
+                  onClick={() => setIsExpanded(!isExpanded)}
+                  className="flex items-center text-xs text-gray-600 hover:text-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 rounded-md px-2 py-1 hover:bg-white/50"
+                >
+                  {isExpanded ? (
+                    <>
+                      <ChevronUpIcon className="h-4 w-4 mr-1" />
+                      Hide Details
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDownIcon className="h-4 w-4 mr-1" />
+                      View Details
+                    </>
+                  )}
+                </button>
               )}
-            </button>
 
-            {/* Additional actions */}
-            {onLearnMore && (
-              <button
-                onClick={handleLearnMore}
-                className="flex items-center text-xs bg-white border border-gray-300 rounded px-2 py-1 hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500"
-              >
-                <ArrowTopRightOnSquareIcon className="w-3 h-3 mr-1" />
-                Analyze Further
-              </button>
-            )}
+              {/* Timestamp for mobile */}
+              {insight.created_at && (
+                <span className="text-xs text-gray-500 sm:hidden">
+                  {new Date(insight.created_at).toLocaleDateString()}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Timestamp for desktop */}
+              {insight.created_at && (
+                <span className="text-xs text-gray-500 hidden sm:inline">
+                  {new Date(insight.created_at).toLocaleDateString()}
+                </span>
+              )}
+
+              {/* AI Analysis action */}
+              {onLearnMore && (
+                <button
+                  onClick={handleLearnMore}
+                  className="flex items-center text-xs bg-blue-50 border border-blue-200 text-blue-700 rounded-md px-3 py-1 hover:bg-blue-100 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500"
+                >
+                  <SparklesIcon className="w-3 h-3 mr-1" />
+                  AI Analysis
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

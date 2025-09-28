@@ -518,25 +518,36 @@ async def get_dataset_summary():
 async def get_dataset_insights():
     """Get all insights from dataset analysis"""
     try:
+        from app.services.enhanced_dataset_processor import convert_numpy_types
+        import json
+
         insights = enhanced_dataset_processor.get_all_insights()
 
-        # Format insights for API response
+        # Format insights for API response with comprehensive numpy type conversion
         formatted_insights = {}
         for category, insight_list in insights.items():
-            formatted_insights[category] = [
-                {
-                    "title": insight.title,
-                    "description": insight.description,
-                    "data": insight.data,
-                    "confidence": insight.confidence,
-                    "source": insight.source_dataset,
-                    "type": insight.insight_type,
+            formatted_insights[category] = []
+            for insight in insight_list:
+                # Convert each field individually to handle all numpy types
+                insight_dict = {
+                    "title": str(insight.title),
+                    "description": str(insight.description),
+                    "data": convert_numpy_types(insight.data),
+                    "confidence": convert_numpy_types(insight.confidence),
+                    "source": str(insight.source_dataset),
+                    "type": str(insight.insight_type),
                 }
-                for insight in insight_list
-            ]
+                formatted_insights[category].append(insight_dict)
 
-        return formatted_insights
+        # Double-convert to ensure all numpy types are handled
+        final_result = convert_numpy_types(formatted_insights)
+
+        # Test JSON serialization to catch any remaining issues
+        json.dumps(final_result)
+
+        return final_result
     except Exception as e:
+        logger.error(f"Dataset insights error: {e}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get dataset insights: {e}"
         )

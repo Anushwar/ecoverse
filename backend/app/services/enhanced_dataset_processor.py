@@ -11,6 +11,27 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 
+def convert_numpy_types(obj):
+    """Convert numpy types to native Python types for JSON serialization"""
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    elif isinstance(obj, (pd.Series, pd.DataFrame)):
+        return convert_numpy_types(obj.to_dict())
+    elif isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [convert_numpy_types(item) for item in obj]
+    elif hasattr(obj, 'item'):  # Additional numpy scalar types
+        return obj.item()
+    return obj
+
+
 @dataclass
 class DatasetInsight:
     """Dataset analysis insight"""
@@ -39,7 +60,8 @@ class EnhancedDatasetProcessor:
     """Enhanced dataset processor for comprehensive carbon footprint analysis"""
 
     def __init__(self):
-        self.data_dir = Path("data")
+        # Set data directory relative to project root
+        self.data_dir = Path(__file__).parent.parent.parent.parent / "data"
         self.insights_cache: Dict[str, List[DatasetInsight]] = {}
         self.benchmarks_cache: Dict[str, List[CarbonBenchmark]] = {}
         self.datasets = {}
@@ -101,7 +123,7 @@ class EnhancedDatasetProcessor:
                 DatasetInsight(
                     title="Diet Impact on Carbon Emissions",
                     description=f"Omnivores have the highest average emissions ({diet_emissions.loc['omnivore', 'mean']:.1f} kg CO2e), while vegans have the lowest ({diet_emissions.loc['vegan', 'mean']:.1f} kg CO2e)",
-                    data=diet_emissions.to_dict("index"),
+                    data=convert_numpy_types(diet_emissions.to_dict("index")),
                     confidence=0.95,
                     source_dataset="Individual Carbon Footprint Calculation",
                     insight_type="comparison",
@@ -118,7 +140,7 @@ class EnhancedDatasetProcessor:
                 DatasetInsight(
                     title="Transportation Mode Impact",
                     description="Private vehicles show higher emissions compared to public transport and walking/cycling",
-                    data=transport_emissions.to_dict("index"),
+                    data=convert_numpy_types(transport_emissions.to_dict("index")),
                     confidence=0.92,
                     source_dataset="Individual Carbon Footprint Calculation",
                     insight_type="comparison",
@@ -135,7 +157,7 @@ class EnhancedDatasetProcessor:
                 DatasetInsight(
                     title="Heating Energy Source Impact",
                     description="Coal heating shows significantly higher emissions than other energy sources",
-                    data=energy_emissions.to_dict("index"),
+                    data=convert_numpy_types(energy_emissions.to_dict("index")),
                     confidence=0.88,
                     source_dataset="Individual Carbon Footprint Calculation",
                     insight_type="comparison",
@@ -158,7 +180,7 @@ class EnhancedDatasetProcessor:
                 DatasetInsight(
                     title="Lifestyle Factor Correlations",
                     description="Vehicle distance and TV/PC usage show strongest correlations with emissions",
-                    data=correlations.to_dict(),
+                    data=convert_numpy_types(correlations.to_dict()),
                     confidence=0.85,
                     source_dataset="Individual Carbon Footprint Calculation",
                     insight_type="correlation",
@@ -185,7 +207,7 @@ class EnhancedDatasetProcessor:
                 DatasetInsight(
                     title="Energy Usage Correlation",
                     description=f"Strong correlation between energy usage and carbon emissions (r={energy_corr:.3f})",
-                    data={"correlation": energy_corr, "analysis": "energy_emissions"},
+                    data=convert_numpy_types({"correlation": energy_corr, "analysis": "energy_emissions"}),
                     confidence=0.93,
                     source_dataset="IoT Carbon Footprint",
                     insight_type="correlation",
@@ -202,7 +224,7 @@ class EnhancedDatasetProcessor:
                 DatasetInsight(
                     title="IoT-Monitored Vehicle Emissions",
                     description="Electric vehicles show lowest emissions, while traditional cars show highest",
-                    data=vehicle_emissions.to_dict("index"),
+                    data=convert_numpy_types(vehicle_emissions.to_dict("index")),
                     confidence=0.90,
                     source_dataset="IoT Carbon Footprint",
                     insight_type="comparison",
@@ -220,11 +242,11 @@ class EnhancedDatasetProcessor:
                 DatasetInsight(
                     title="Renewable Energy Impact",
                     description=f"High renewable energy usage (>50%) reduces emissions by {((low_avg - high_avg) / low_avg * 100):.1f}%",
-                    data={
+                    data=convert_numpy_types({
                         "high_renewable_avg": high_avg,
                         "low_renewable_avg": low_avg,
                         "reduction_percent": (low_avg - high_avg) / low_avg * 100,
-                    },
+                    }),
                     confidence=0.87,
                     source_dataset="IoT Carbon Footprint",
                     insight_type="trend",
@@ -241,7 +263,7 @@ class EnhancedDatasetProcessor:
                 DatasetInsight(
                     title="Building Type Efficiency",
                     description="Commercial and residential buildings show different emission patterns",
-                    data=building_emissions.to_dict("index"),
+                    data=convert_numpy_types(building_emissions.to_dict("index")),
                     confidence=0.82,
                     source_dataset="IoT Carbon Footprint",
                     insight_type="comparison",
@@ -278,11 +300,11 @@ class EnhancedDatasetProcessor:
                     DatasetInsight(
                         title="Daily Energy Usage Patterns",
                         description=f"Peak energy consumption occurs at {peak_hour}:00 with {peak_consumption:.2f} kW",
-                        data={
+                        data=convert_numpy_types({
                             "hourly_consumption": hourly_avg.to_dict(),
                             "peak_hour": peak_hour,
                             "peak_consumption": peak_consumption,
-                        },
+                        }),
                         confidence=0.94,
                         source_dataset="Individual Household Electric Power Consumption",
                         insight_type="trend",
@@ -295,7 +317,7 @@ class EnhancedDatasetProcessor:
                     DatasetInsight(
                         title="Weekly Energy Consumption Patterns",
                         description="Weekdays show different consumption patterns compared to weekends",
-                        data=weekly_avg.to_dict(),
+                        data=convert_numpy_types(weekly_avg.to_dict()),
                         confidence=0.89,
                         source_dataset="Individual Household Electric Power Consumption",
                         insight_type="trend",
@@ -317,7 +339,7 @@ class EnhancedDatasetProcessor:
                     DatasetInsight(
                         title="Household Energy Distribution",
                         description="Energy consumption breakdown by household areas",
-                        data=submetering_avg,
+                        data=convert_numpy_types(submetering_avg),
                         confidence=0.91,
                         source_dataset="Individual Household Electric Power Consumption",
                         insight_type="comparison",
@@ -444,10 +466,10 @@ class EnhancedDatasetProcessor:
                         DatasetInsight(
                             title="Excellent Carbon Performance",
                             description=f"Your emissions ({user_total_emissions:.1f} kg CO2e) are in the bottom 25% globally",
-                            data={
+                            data=convert_numpy_types({
                                 "user_emissions": user_total_emissions,
                                 "percentile": "bottom_25",
-                            },
+                            }),
                             confidence=0.89,
                             source_dataset="Individual Carbon Footprint Calculation",
                             insight_type="comparison",
@@ -458,10 +480,10 @@ class EnhancedDatasetProcessor:
                         DatasetInsight(
                             title="High Carbon Emissions Detected",
                             description=f"Your emissions ({user_total_emissions:.1f} kg CO2e) are in the top 25% - significant reduction opportunities exist",
-                            data={
+                            data=convert_numpy_types({
                                 "user_emissions": user_total_emissions,
                                 "percentile": "top_25",
-                            },
+                            }),
                             confidence=0.91,
                             source_dataset="Individual Carbon Footprint Calculation",
                             insight_type="alert",
@@ -472,10 +494,10 @@ class EnhancedDatasetProcessor:
                         DatasetInsight(
                             title="Average Carbon Performance",
                             description=f"Your emissions ({user_total_emissions:.1f} kg CO2e) are within the average range",
-                            data={
+                            data=convert_numpy_types({
                                 "user_emissions": user_total_emissions,
                                 "percentile": "average",
-                            },
+                            }),
                             confidence=0.87,
                             source_dataset="Individual Carbon Footprint Calculation",
                             insight_type="comparison",
@@ -496,11 +518,11 @@ class EnhancedDatasetProcessor:
                     DatasetInsight(
                         title=f"Primary Emission Source: {top_category[0].title()}",
                         description=f"{top_category[0].title()} accounts for {(top_category[1] / user_total_emissions * 100):.1f}% of your carbon footprint",
-                        data={
+                        data=convert_numpy_types({
                             "category": top_category[0],
                             "emissions": top_category[1],
                             "percentage": top_category[1] / user_total_emissions * 100,
-                        },
+                        }),
                         confidence=0.95,
                         source_dataset="User Data Analysis",
                         insight_type="comparison",

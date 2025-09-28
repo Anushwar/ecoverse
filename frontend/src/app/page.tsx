@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { api, AnalysisResponse, DatasetInsight } from "../services/api";
 import Dashboard from "../components/Dashboard";
@@ -9,6 +10,7 @@ import RecommendationCard from "../components/RecommendationCard";
 import InsightCard from "../components/InsightCard";
 import EnhancedDatasetAnalysis from "../components/EnhancedDatasetAnalysis";
 import EnhancedAIAnalysis from "../components/EnhancedAIAnalysis";
+import ToastProvider, { useToast } from "../components/ToastProvider";
 import {
   ChartBarIcon,
   PlusIcon,
@@ -18,6 +20,8 @@ import {
   CircleStackIcon,
   ExclamationCircleIcon,
   ArrowPathIcon,
+  TrashIcon,
+  EllipsisVerticalIcon,
 } from "@heroicons/react/24/outline";
 
 interface DashboardData {
@@ -66,7 +70,10 @@ interface Insight {
   created_at?: string;
 }
 
-export default function Home() {
+function HomeContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const { addToast } = useToast();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(
     null
@@ -90,10 +97,40 @@ export default function Home() {
   });
   const [user, setUser] = useState<any>(null);
   const [analysisQuestion, setAnalysisQuestion] = useState("");
+  const [showClearMenu, setShowClearMenu] = useState(false);
+  const [hiddenRecommendations, setHiddenRecommendations] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadInitialData();
   }, []);
+
+  // Sync URL with active tab
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab');
+    if (tabFromUrl && ['dashboard', 'activities', 'insights', 'datasets', 'recommendations'].includes(tabFromUrl)) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [searchParams]);
+
+  // Update URL when tab changes
+  const updateUrlTab = (tabId: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', tabId);
+    router.push(`?${params.toString()}`, { scroll: false });
+  };
+
+  // Close clear menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (showClearMenu && !target.closest('.clear-menu-container')) {
+        setShowClearMenu(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showClearMenu]);
 
   const loadInitialData = async () => {
     try {
@@ -206,14 +243,99 @@ export default function Home() {
     // Set the analysis question and switch to dashboard for analysis
     setAnalysisQuestion(`Provide detailed analysis and recommendations for: ${insight.title}`);
     setActiveTab("dashboard");
+    updateUrlTab("dashboard");
     // Scroll to analysis section
     setTimeout(() => {
       document.getElementById('ai-analysis-section')?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
   };
 
+  const handleRecommendationAction = (recommendationId: string, action: 'accept' | 'later' | 'reject') => {
+    console.log(`Recommendation ${recommendationId} was ${action}ed`);
+
+    // Here you could implement additional logic like:
+    // - Saving the action to backend
+    // - Tracking user preferences
+    // - Updating user profile based on accepted recommendations
+    // - For now, we'll just log the action
+
+    // Show appropriate toast based on action
+    if (action === 'accept') {
+      addToast({
+        type: 'success',
+        title: 'Recommendation Accepted!',
+        message: 'Added to your action plan. Great choice for reducing your carbon footprint!',
+      });
+      console.log('Recommendation accepted and added to action plan');
+    } else if (action === 'later') {
+      addToast({
+        type: 'info',
+        title: 'Saved for Later',
+        message: 'We\'ll remind you about this recommendation in the future.',
+      });
+      console.log('Recommendation saved for later');
+    } else if (action === 'reject') {
+      // Hide the recommendation
+      setHiddenRecommendations(prev => new Set([...prev, recommendationId]));
+
+      addToast({
+        type: 'info',
+        title: 'Recommendation Dismissed',
+        message: 'Recommendation removed from your list.',
+      });
+      console.log('Recommendation dismissed');
+    }
+  };
+
+  const handleClearData = async (dataType: 'all' | 'activities' | 'insights' | 'recommendations') => {
+    const confirmMessage = dataType === 'all'
+      ? 'Are you sure you want to clear ALL data? This action cannot be undone.'
+      : `Are you sure you want to clear all ${dataType}? This action cannot be undone.`;
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      if (dataType === 'all' || dataType === 'activities') {
+        setActivities([]);
+      }
+      if (dataType === 'all' || dataType === 'insights') {
+        setInsights([]);
+      }
+      if (dataType === 'all' || dataType === 'recommendations') {
+        setRecommendations([]);
+        setHiddenRecommendations(new Set()); // Reset hidden recommendations
+      }
+      if (dataType === 'all') {
+        setDashboardData(null);
+        setAnalysisResponse(null);
+        setAnalysisQuestion('');
+      }
+
+      // In a real app, you would also clear data from the backend
+      console.log(`Cleared ${dataType} data`);
+
+      // Show success toast
+      addToast({
+        type: 'success',
+        title: `${dataType === 'all' ? 'All data' : dataType.charAt(0).toUpperCase() + dataType.slice(1)} cleared`,
+        message: 'Data has been successfully removed from your dashboard.',
+      });
+
+    } catch (error) {
+      console.error('Error clearing data:', error);
+      addToast({
+        type: 'error',
+        title: 'Failed to clear data',
+        message: 'An error occurred while clearing your data. Please try again.',
+      });
+    }
+  };
+
   const handleTabChange = async (tabId: string) => {
     setActiveTab(tabId);
+    updateUrlTab(tabId);
 
     // Handle tab-specific loading for data that might need refreshing
     if (tabId === "insights" && insights.length === 0) {
@@ -263,8 +385,33 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-carbon-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50">
+        <motion.div
+          className="flex flex-col items-center justify-center"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="relative">
+            <div className="animate-spin rounded-full h-20 w-20 border-4 border-green-200 border-t-green-600"></div>
+            <motion.div
+              className="absolute inset-0 flex items-center justify-center"
+              animate={{ rotate: [0, 360] }}
+              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+            >
+              <BeakerIcon className="h-10 w-10 text-green-600" />
+            </motion.div>
+          </div>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="mt-6 text-center"
+          >
+            <h3 className="text-xl font-bold text-gray-800 mb-2">🌱 EcoVerse</h3>
+            <p className="text-gray-600">Initializing your carbon footprint dashboard...</p>
+          </motion.div>
+        </motion.div>
       </div>
     );
   }
@@ -276,12 +423,41 @@ export default function Home() {
         <motion.header
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
           className="text-center mb-8"
         >
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">🌱 EcoVerse</h1>
-          <p className="text-xl text-gray-600 mb-2">
-            AI-Powered Carbon Footprint Management with Real Dataset Analysis
-          </p>
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.2, duration: 0.5 }}
+          >
+            <h1 className="text-5xl font-bold bg-gradient-to-r from-green-600 via-blue-600 to-purple-600 bg-clip-text text-transparent mb-4">
+              🌱 EcoVerse
+            </h1>
+          </motion.div>
+          <motion.div
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.4, duration: 0.5 }}
+          >
+            <p className="text-xl text-gray-600 mb-2 max-w-3xl mx-auto">
+              AI-Powered Carbon Footprint Management with Real Dataset Analysis
+            </p>
+            <div className="flex items-center justify-center space-x-4 text-sm text-gray-500">
+              <span className="flex items-center">
+                <BeakerIcon className="h-4 w-4 mr-1" />
+                Multi-Agent AI
+              </span>
+              <span className="flex items-center">
+                <CircleStackIcon className="h-4 w-4 mr-1" />
+                Real Data Insights
+              </span>
+              <span className="flex items-center">
+                <SparklesIcon className="h-4 w-4 mr-1" />
+                Personalized Recommendations
+              </span>
+            </div>
+          </motion.div>
           {user && (
             <p className="text-sm text-gray-500">
               Welcome back, {user.name}!
@@ -295,6 +471,71 @@ export default function Home() {
             </p>
           )}
         </motion.header>
+
+        {/* Clear Data Menu */}
+        <div className="flex justify-end mb-4">
+          <div className="relative clear-menu-container">
+            <button
+              onClick={() => setShowClearMenu(!showClearMenu)}
+              className="flex items-center px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+            >
+              <EllipsisVerticalIcon className="h-4 w-4 mr-1" />
+              Options
+            </button>
+
+            {showClearMenu && (
+              <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                <div className="py-1">
+                  <div className="px-3 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
+                    Clear Data
+                  </div>
+                  <button
+                    onClick={() => {
+                      handleClearData('activities');
+                      setShowClearMenu(false);
+                    }}
+                    className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <TrashIcon className="h-4 w-4 mr-2" />
+                    Clear Activities
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleClearData('insights');
+                      setShowClearMenu(false);
+                    }}
+                    className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <TrashIcon className="h-4 w-4 mr-2" />
+                    Clear AI Insights
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleClearData('recommendations');
+                      setShowClearMenu(false);
+                    }}
+                    className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <TrashIcon className="h-4 w-4 mr-2" />
+                    Clear Recommendations
+                  </button>
+                  <div className="border-t border-gray-100">
+                    <button
+                      onClick={() => {
+                        handleClearData('all');
+                        setShowClearMenu(false);
+                      }}
+                      className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <TrashIcon className="h-4 w-4 mr-2" />
+                      Clear All Data
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* Tab Navigation */}
         <div className="flex flex-wrap justify-center mb-8">
@@ -461,10 +702,13 @@ export default function Home() {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {recommendations.length > 0 ? (
-                      recommendations.map((recommendation) => (
+                      recommendations
+                        .filter(recommendation => !hiddenRecommendations.has(recommendation.id))
+                        .map((recommendation) => (
                         <RecommendationCard
                           key={recommendation.id}
                           recommendation={recommendation}
+                          onAction={handleRecommendationAction}
                         />
                       ))
                     ) : (
@@ -488,5 +732,13 @@ export default function Home() {
         </AnimatePresence>
       </div>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <ToastProvider>
+      <HomeContent />
+    </ToastProvider>
   );
 }

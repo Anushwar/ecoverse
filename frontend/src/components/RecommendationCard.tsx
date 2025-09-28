@@ -1,9 +1,12 @@
 import { motion } from 'framer-motion'
+import { useState } from 'react'
 import {
   CheckCircleIcon,
   XMarkIcon,
   CurrencyDollarIcon,
   ClockIcon,
+  HandThumbUpIcon,
+  ClockIcon as PendingIcon,
 } from '@heroicons/react/24/outline'
 
 interface RecommendationCardProps {
@@ -17,9 +20,11 @@ interface RecommendationCardProps {
       difficulty: string
     }
   }
+  onAction?: (recommendationId: string, action: 'accept' | 'later' | 'reject') => void
 }
 
-const RecommendationCard = ({ recommendation }: RecommendationCardProps) => {
+const RecommendationCard = ({ recommendation, onAction }: RecommendationCardProps) => {
+  const [actionTaken, setActionTaken] = useState<'accept' | 'later' | 'reject' | null>(null)
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty.toLowerCase()) {
       case 'easy':
@@ -38,6 +43,36 @@ const RecommendationCard = ({ recommendation }: RecommendationCardProps) => {
       return `Saves $${Math.abs(cost)}`
     }
     return `$${cost}`
+  }
+
+  const handleAction = (action: 'accept' | 'later' | 'reject') => {
+    setActionTaken(action)
+    onAction?.(recommendation.id, action)
+  }
+
+  const getActionStatus = () => {
+    switch (actionTaken) {
+      case 'accept':
+        return {
+          text: 'Accepted',
+          color: 'bg-green-100 text-green-800 border-green-200',
+          icon: HandThumbUpIcon
+        }
+      case 'later':
+        return {
+          text: 'Saved for Later',
+          color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+          icon: PendingIcon
+        }
+      case 'reject':
+        return {
+          text: 'Dismissed',
+          color: 'bg-gray-100 text-gray-800 border-gray-200',
+          icon: XMarkIcon
+        }
+      default:
+        return null
+    }
   }
 
   return (
@@ -93,30 +128,43 @@ const RecommendationCard = ({ recommendation }: RecommendationCardProps) => {
         </div>
       </div>
 
-      {/* Action Buttons */}
-      <div className="flex space-x-3">
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="flex-1 bg-primary-600 hover:bg-primary-700 text-white py-2 px-4 rounded-lg font-medium transition-colors duration-200"
-        >
-          Accept
-        </motion.button>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg font-medium transition-colors duration-200"
-        >
-          Maybe Later
-        </motion.button>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors duration-200"
-        >
-          <XMarkIcon className="h-5 w-5" />
-        </motion.button>
-      </div>
+      {/* Action Buttons or Status */}
+      {actionTaken ? (
+        <div className={`p-3 rounded-lg border flex items-center ${getActionStatus()?.color}`}>
+          {getActionStatus()?.icon && (() => {
+            const IconComponent = getActionStatus()!.icon;
+            return <IconComponent className="h-5 w-5 mr-2" />;
+          })()}
+          <span className="font-medium">{getActionStatus()?.text}</span>
+        </div>
+      ) : (
+        <div className="flex space-x-3">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => handleAction('accept')}
+            className="flex-1 bg-primary-600 hover:bg-primary-700 text-white py-2 px-4 rounded-lg font-medium transition-colors duration-200"
+          >
+            Accept
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => handleAction('later')}
+            className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg font-medium transition-colors duration-200"
+          >
+            Maybe Later
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => handleAction('reject')}
+            className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors duration-200"
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </motion.button>
+        </div>
+      )}
     </motion.div>
   )
 }
