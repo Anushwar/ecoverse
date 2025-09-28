@@ -1,7 +1,7 @@
 # FastAPI Backend for EcoVerse
 import os
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Optional, Any
 
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,10 +47,10 @@ orchestrator = AgentOrchestrator(
 security = HTTPBearer()
 
 # In-memory storage (replace with database in production)
-users_db: Dict[str, User] = {}
-activities_db: Dict[str, List[CarbonActivity]] = {}
-recommendations_db: Dict[str, List[AIRecommendation]] = {}
-insights_db: Dict[str, List[CarbonInsight]] = {}
+users_db: dict[str, User] = {}
+activities_db: dict[str, list[CarbonActivity]] = {}
+recommendations_db: dict[str, list[AIRecommendation]] = {}
+insights_db: dict[str, list[CarbonInsight]] = {}
 
 # Pydantic models for API requests/responses
 class CreateUserRequest(BaseModel):
@@ -67,7 +67,7 @@ class AddActivityRequest(BaseModel):
     unit: str
     date: Optional[datetime] = None
     location: Optional[str] = None
-    metadata: Optional[Dict[str, any]] = None
+    metadata: Optional[dict[str, Any]] = None
 
 class AnalyzeFootprintRequest(BaseModel):
     question: Optional[str] = None
@@ -90,9 +90,9 @@ class DashboardResponse(BaseModel):
     recommendations_count: int
 
 class AnalysisResponse(BaseModel):
-    insights: List[CarbonInsight]
-    recommendations: List[AIRecommendation]
-    gemini_insight: Dict[str, any]
+    insights: list[CarbonInsight]
+    recommendations: list[AIRecommendation]
+    gemini_insight: dict[str, Any]
 
 # Helper functions
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
@@ -244,7 +244,7 @@ async def add_activity(
 
     return calculation_result
 
-@app.get("/activities", response_model=List[CarbonActivity])
+@app.get("/activities", response_model=list[CarbonActivity])
 async def get_activities(
     user_id: str = Depends(get_current_user),
     category: Optional[ActivityCategory] = None,
@@ -333,7 +333,7 @@ async def analyze_footprint(
             detail=f"Analysis failed: {str(e)}"
         )
 
-@app.get("/insights", response_model=List[CarbonInsight])
+@app.get("/insights", response_model=list[CarbonInsight])
 async def get_insights(user_id: str = Depends(get_current_user)):
     """Get user's carbon insights"""
     if user_id not in users_db:
@@ -341,7 +341,7 @@ async def get_insights(user_id: str = Depends(get_current_user)):
 
     return insights_db.get(user_id, [])
 
-@app.get("/recommendations", response_model=List[AIRecommendation])
+@app.get("/recommendations", response_model=list[AIRecommendation])
 async def get_recommendations(user_id: str = Depends(get_current_user)):
     """Get user's AI recommendations"""
     if user_id not in users_db:
