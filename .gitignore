@@ -160,3 +160,6 @@ data/
 *.csv
 *.txt
 processed_data.json
+
+# Claude AI development files
+.claude/
