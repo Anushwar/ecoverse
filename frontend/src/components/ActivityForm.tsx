@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
+import { api } from '../services/api'
 import { useForm } from 'react-hook-form'
 import {
   TruckIcon,
@@ -81,9 +82,26 @@ const ActivityForm = ({ onActivityAdded }: ActivityFormProps) => {
   const onSubmit = async (data: FormData) => {
     setLoading(true)
     try {
-      // Mock calculation for demo
-      const mockEmission = calculateMockEmission(data)
+      // Call the real API to add activity
+      const result = await api.addActivity({
+        category: data.category,
+        type: data.type,
+        amount: data.amount,
+        unit: data.unit,
+        date: new Date().toISOString(),
+        location: 'US' // Default location, can be made dynamic
+      })
 
+      // Pass the result to parent component
+      onActivityAdded(result)
+      reset()
+      setSelectedCategory('')
+
+      console.log('Activity added successfully:', result)
+    } catch (error) {
+      console.error('Error adding activity:', error)
+      // Fallback to mock calculation if API fails
+      const mockEmission = calculateMockEmission(data)
       const newActivity = {
         id: Date.now().toString(),
         ...data,
@@ -91,15 +109,7 @@ const ActivityForm = ({ onActivityAdded }: ActivityFormProps) => {
         date: new Date().toISOString(),
         source: 'manual'
       }
-
       onActivityAdded(newActivity)
-      reset()
-      setSelectedCategory('')
-
-      // Show success message (you can use toast here)
-      console.log('Activity added successfully!')
-    } catch (error) {
-      console.error('Error adding activity:', error)
     } finally {
       setLoading(false)
     }

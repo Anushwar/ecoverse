@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion'
 import {
   ChartBarIcon,
-  TrendingDownIcon,
-  TrendingUpIcon,
+  ArrowTrendingDownIcon,
+  ArrowTrendingUpIcon,
   CalendarIcon,
   FireIcon,
 } from '@heroicons/react/24/outline'
@@ -114,9 +114,9 @@ const Dashboard = ({ data, activities }: DashboardProps) => {
               data.weekly_trend === 'decreasing' ? 'bg-green-100' : 'bg-red-100'
             }`}>
               {data.weekly_trend === 'decreasing' ? (
-                <TrendingDownIcon className="h-6 w-6 text-green-600" />
+                <ArrowTrendingDownIcon className="h-6 w-6 text-green-600" />
               ) : (
-                <TrendingUpIcon className="h-6 w-6 text-red-600" />
+                <ArrowTrendingUpIcon className="h-6 w-6 text-red-600" />
               )}
             </div>
             <div className="ml-4">
