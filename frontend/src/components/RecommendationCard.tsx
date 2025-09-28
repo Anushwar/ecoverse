@@ -4,9 +4,8 @@ import {
   CheckCircleIcon,
   XMarkIcon,
   CurrencyDollarIcon,
-  ClockIcon,
-  HandThumbUpIcon,
   ClockIcon as PendingIcon,
+  HandThumbUpIcon,
 } from '@heroicons/react/24/outline'
 
 interface RecommendationCardProps {
