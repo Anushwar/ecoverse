@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/anushwar/.claude/**)",
+      "WebFetch(domain:sunhacks2025.devpost.com)",
+      "WebFetch(domain:www.perplexity.ai)",
+      "WebFetch(domain:gemini.google.com)",
+      "Bash(python:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(ruff check:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(timeout:*)",
+      "Bash(uvicorn:*)",
+      "Bash(pnpm install:*)",
+      "Bash(npm install:*)",
+      "Bash(pnpm run dev:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
