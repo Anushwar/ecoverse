@@ -40,6 +40,19 @@ const EnhancedAIAnalysis = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeSection, setActiveSection] = useState<string>('summary');
 
+  // Clean markdown formatting from text
+  const cleanMarkdown = (text: string): string => {
+    return text
+      .replace(/#{1,6}\s+/g, '') // Remove headers
+      .replace(/\*\*(.*?)\*\*/g, '$1') // Remove **bold**
+      .replace(/\*(.*?)\*/g, '$1') // Remove *italic*
+      .replace(/`(.*?)`/g, '$1') // Remove `code`
+      .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Remove [links](url)
+      .replace(/^[-*+]\s+/gm, '• ') // Convert - to bullet points
+      .replace(/^\d+\.\s+/gm, '') // Remove numbered lists
+      .trim();
+  };
+
   // Parse structured content from Gemini response
   const parseStructuredContent = (text: string) => {
     const sections = {
@@ -47,12 +60,12 @@ const EnhancedAIAnalysis = ({
       recommendations: [] as string[],
       benchmarking: '',
       roadmap: '',
-      raw_content: text,
+      raw_content: cleanMarkdown(text),
     };
 
     // Try to extract structured sections
     const impactMatch = text.match(/### 1\. IMPACT ASSESSMENT([\s\S]*?)### 2\./);
-    if (impactMatch) sections.impact_assessment = impactMatch[1].trim();
+    if (impactMatch) sections.impact_assessment = cleanMarkdown(impactMatch[1].trim());
 
     const recommendationsMatch = text.match(/### 2\. ACTIONABLE RECOMMENDATIONS([\s\S]*?)### 3\./);
     if (recommendationsMatch) {
@@ -60,15 +73,15 @@ const EnhancedAIAnalysis = ({
       // Extract bullet points or numbered items
       const bullets = recText.match(/- \*\*(.*?)\*\*: (.*?)(?=\n- \*\*|$)/gs);
       if (bullets) {
-        sections.recommendations = bullets.map(bullet => bullet.replace(/- \*\*(.*?)\*\*: /, '$1: '));
+        sections.recommendations = bullets.map(bullet => cleanMarkdown(bullet.replace(/- \*\*(.*?)\*\*: /, '$1: ')));
       }
     }
 
     const benchmarkingMatch = text.match(/### 3\. BENCHMARKING & TRENDS([\s\S]*?)### 4\./);
-    if (benchmarkingMatch) sections.benchmarking = benchmarkingMatch[1].trim();
+    if (benchmarkingMatch) sections.benchmarking = cleanMarkdown(benchmarkingMatch[1].trim());
 
     const roadmapMatch = text.match(/### 4\. IMPLEMENTATION ROADMAP([\s\S]*?)$/);
-    if (roadmapMatch) sections.roadmap = roadmapMatch[1].trim();
+    if (roadmapMatch) sections.roadmap = cleanMarkdown(roadmapMatch[1].trim());
 
     return sections;
   };
@@ -342,7 +355,7 @@ const EnhancedAIAnalysis = ({
                       <h5 className="font-semibold text-gray-900 mb-2">Complete Analysis</h5>
                       <div className="prose prose-sm max-w-none">
                         <p className="text-gray-700 leading-relaxed whitespace-pre-line text-sm">
-                          {geminiInsight.summary || geminiInsight.insights || 'No detailed analysis available.'}
+                          {cleanMarkdown(geminiInsight.summary || geminiInsight.insights || 'No detailed analysis available.')}
                         </p>
                       </div>
 

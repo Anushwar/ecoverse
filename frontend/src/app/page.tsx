@@ -577,13 +577,15 @@ function HomeContent() {
                 )}
 
                 {/* Enhanced AI Analysis Section */}
-                <EnhancedAIAnalysis
-                  analysisQuestion={analysisQuestion}
-                  setAnalysisQuestion={setAnalysisQuestion}
-                  onAnalyze={handleAnalyzeFootprint}
-                  analysisLoading={analysisLoading}
-                  geminiInsight={analysisResponse?.gemini_insight || null}
-                />
+                <div id="ai-analysis-section">
+                  <EnhancedAIAnalysis
+                    analysisQuestion={analysisQuestion}
+                    setAnalysisQuestion={setAnalysisQuestion}
+                    onAnalyze={handleAnalyzeFootprint}
+                    analysisLoading={analysisLoading}
+                    geminiInsight={analysisResponse?.gemini_insight || null}
+                  />
+                </div>
               </div>
             )}
 

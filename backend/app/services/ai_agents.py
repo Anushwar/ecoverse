@@ -501,7 +501,11 @@ Ensure all recommendations are specific, measurable, and include projected quant
             if response.candidates and response.candidates[0].content.parts:
                 response_text = response.candidates[0].content.parts[0].text.strip()
             else:
-                response_text = response.text.strip()
+                # Safely access response text if available
+                try:
+                    response_text = response.text.strip()
+                except AttributeError:
+                    raise Exception("Response text is not accessible")
 
             if response_text.startswith("```json"):
                 response_text = response_text[7:-3]
@@ -679,7 +683,11 @@ class AgentOrchestrator:
             if response.candidates and response.candidates[0].content.parts:
                 response_text = response.candidates[0].content.parts[0].text.strip()
             else:
-                response_text = response.text.strip()
+                # Safely access response text if available
+                try:
+                    response_text = response.text.strip()
+                except AttributeError:
+                    raise Exception("Response text is not accessible")
 
             return {
                 "summary": response_text,

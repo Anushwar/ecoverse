@@ -104,9 +104,9 @@ const RecommendationCard = ({ recommendation, onAction }: RecommendationCardProp
             <div className="p-1 bg-green-100 rounded">
               <CheckCircleIcon className="h-4 w-4 text-green-600" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-green-600 font-medium">CO₂ Reduction</p>
-              <p className="text-lg font-bold text-green-700">
+              <p className="text-lg font-bold text-green-700 truncate">
                 {recommendation.impact.carbon_reduction} kg
               </p>
             </div>
@@ -118,9 +118,9 @@ const RecommendationCard = ({ recommendation, onAction }: RecommendationCardProp
             <div className="p-1 bg-blue-100 rounded">
               <CurrencyDollarIcon className="h-4 w-4 text-blue-600" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-blue-600 font-medium">Cost Impact</p>
-              <p className="text-lg font-bold text-blue-700">
+              <p className="text-lg font-bold text-blue-700 truncate">
                 {formatCost(recommendation.impact.cost)}
               </p>
             </div>
