@@ -1,0 +1,156 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ecoverse"
+dynamic = ["version"]
+description = "AI-powered carbon footprint management platform"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = ["sustainability", "carbon", "ai", "environment"]
+authors = [
+  {name = "EcoVerse Team", email = "team@ecoverse.ai"},
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+]
+dependencies = [
+  "fastapi>=0.104.1",
+  "uvicorn>=0.24.0",
+  "pydantic>=2.5.0",
+  "sqlalchemy>=2.0.23",
+  "google-generativeai>=0.3.2",
+  "openai>=1.3.7",
+  "pandas>=2.1.4",
+  "numpy>=1.25.2",
+  "python-multipart>=0.0.6",
+  "python-jose>=3.3.0",
+  "passlib>=1.7.4",
+  "python-dotenv>=1.0.0",
+  "requests>=2.31.0",
+  "httpx>=0.25.2",
+  "jinja2>=3.1.2",
+  "aiofiles>=23.2.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.1.6",
+  "black>=23.10.1",
+  "mypy>=1.6.1",
+  "pytest>=7.4.3",
+  "pytest-asyncio>=0.21.1",
+  "pytest-cov>=4.1.0",
+  "pre-commit>=3.5.0",
+]
+
+[project.urls]
+Documentation = "https://github.com/ecoverse/ecoverse#readme"
+Issues = "https://github.com/ecoverse/ecoverse/issues"
+Source = "https://github.com/ecoverse/ecoverse"
+
+[tool.hatch.version]
+path = "src/ecoverse/__about__.py"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+select = [
+    "A",
+    "ARG",
+    "B",
+    "C",
+    "DTZ",
+    "E",
+    "EM",
+    "F",
+    "FBT",
+    "I",
+    "ICN",
+    "ISC",
+    "N",
+    "PLC",
+    "PLE",
+    "PLR",
+    "PLW",
+    "Q",
+    "RUF",
+    "S",
+    "T",
+    "TID",
+    "UP",
+    "W",
+    "YTT",
+]
+ignore = [
+    "FBT001",  # Boolean-typed positional argument in function definition
+    "FBT002",  # Boolean-typed positional argument in function definition
+    "FBT003",  # Boolean-typed positional argument in function definition
+    "PLR0913", # Too many arguments to function call
+    "S101",    # Use of assert detected
+]
+
+[tool.ruff.isort]
+known-first-party = ["ecoverse"]
+
+[tool.ruff.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.per-file-ignores]
+"tests/**/*" = ["PLR2004", "S101", "TID252"]
+
+[tool.black]
+target-version = ["py310"]
+line-length = 88
+
+[tool.mypy]
+python_version = "3.10"
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+no_implicit_optional = true
+show_error_codes = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unreachable = true
+warn_unused_configs = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--cov=ecoverse --cov-report=term-missing --cov-report=html"
+
+[tool.coverage.run]
+source = ["ecoverse"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
