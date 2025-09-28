@@ -368,7 +368,19 @@ class GeminiInsightAgent(BaseAgent):
         )
         self.api_key = api_key
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel("gemini-1.5-flash")
+
+        # Optimized generation config for speed and quality
+        generation_config = genai.GenerationConfig(
+            temperature=0.7,  # Balanced creativity and consistency
+            top_p=0.8,       # Focus on most likely tokens
+            top_k=40,        # Reasonable candidate pool
+            max_output_tokens=1024,  # Sufficient for JSON responses
+        )
+
+        self.model = genai.GenerativeModel(
+            "gemini-2.5-flash",
+            generation_config=generation_config
+        )
         self.capabilities = [
             "natural-language-insights",
             "comparative-analysis",
@@ -404,23 +416,45 @@ class GeminiInsightAgent(BaseAgent):
                 category_breakdown.get(category, 0) + activity.carbon_emission
             )
 
+        # Calculate additional metrics for enhanced analysis
+        avg_daily_emissions = total_emissions / 30 if activities else 0
+        annualized_emissions = total_emissions * 12
+        highest_category = max(category_breakdown.items(), key=lambda x: x[1]) if category_breakdown else ("none", 0)
+        lowest_category = min(category_breakdown.items(), key=lambda x: x[1]) if category_breakdown else ("none", 0)
+
+        # Recent activity trends
+        recent_activities = activities[-5:] if len(activities) >= 5 else activities
+        recent_avg = sum(a.carbon_emission for a in recent_activities) / len(recent_activities) if recent_activities else 0
+
         context = f"""
-User Profile:
-- Location: {user.profile.location}
-- Household Size: {user.profile.household_size}
-- Lifestyle: {user.profile.lifestyle.value}
+## USER PROFILE & CONTEXT:
+- **Location**: {user.profile.location}
+- **Household Size**: {user.profile.household_size} people
+- **Lifestyle**: {user.profile.lifestyle.value}
+- **Sustainability Goals**: {", ".join([f"{g.type.value}: {g.target_reduction}% reduction target" for g in user.profile.goals]) if user.profile.goals else "No specific goals set"}
 
-Carbon Footprint Data:
-- Total Monthly Emissions: {total_emissions:.2f} kg CO2e
-- Category Breakdown: {json.dumps(category_breakdown, indent=2)}
-- Number of Activities: {len(activities)}
+## CARBON FOOTPRINT ANALYSIS:
+- **Current Monthly Emissions**: {total_emissions:.2f} kg CO2e
+- **Daily Average**: {avg_daily_emissions:.2f} kg CO2e
+- **Annualized Projection**: {annualized_emissions:.1f} kg CO2e/year
+- **Activity Count**: {len(activities)} recorded activities
 
-Goals: {", ".join([f"{g.type.value} goal: {g.target_reduction}% reduction" for g in user.profile.goals])}
+## CATEGORY BREAKDOWN & PATTERNS:
+{json.dumps(category_breakdown, indent=2)}
 
-Please analyze this carbon footprint data and provide:
-1. Key insights about the user's environmental impact
-2. Specific actionable recommendations
-3. Predictions about potential improvements
+- **Highest Impact Category**: {highest_category[0]} ({highest_category[1]:.2f} kg CO2e, {(highest_category[1]/total_emissions*100):.1f}% of total)
+- **Lowest Impact Category**: {lowest_category[0]} ({lowest_category[1]:.2f} kg CO2e, {(lowest_category[1]/total_emissions*100):.1f}% of total)
+
+## RECENT TRENDS:
+- **Recent Activity Average**: {recent_avg:.2f} kg CO2e per activity
+- **Trend Direction**: {"Improving" if recent_avg < avg_daily_emissions else "Increasing" if recent_avg > avg_daily_emissions else "Stable"}
+
+## ANALYSIS REQUIREMENTS:
+Provide comprehensive analysis focusing on:
+1. **Impact Assessment**: Compare against global benchmarks and identify optimization opportunities
+2. **Behavioral Insights**: Analyze patterns and recommend lifestyle adjustments
+3. **Goal Alignment**: Address user's specific reduction targets and provide roadmap
+4. **Personalized Recommendations**: Tailor suggestions to user's location, household size, and lifestyle
         """.strip()
 
         return context
@@ -435,13 +469,26 @@ Please analyze this carbon footprint data and provide:
 
         prompt += """
 
-Please respond with a JSON object containing:
+## RESPONSE FORMAT:
+Respond with a well-structured JSON object containing detailed analysis:
+
 {
-    "insight": "A clear, actionable insight about the user's carbon footprint",
-    "actionable_steps": ["step1", "step2", "step3"],
+    "insight": "Comprehensive insight about the user's carbon footprint with specific data points, comparisons, and trends",
+    "actionable_steps": [
+        "High-impact action with quantified CO2e reduction potential",
+        "Medium-impact optimization with implementation timeline",
+        "Long-term strategy with measurable outcomes"
+    ],
     "confidence": 0.85,
-    "predictions": "What improvements could be expected if recommendations are followed"
+    "predictions": "Detailed predictions of emission reductions, cost savings, and environmental impact if recommendations are implemented over 3, 6, and 12 months",
+    "priority_score": 8.5,
+    "impact_category": "transportation|energy|food|waste|lifestyle",
+    "reduction_potential": "X.X kg CO2e per month",
+    "implementation_difficulty": "easy|moderate|challenging",
+    "timeframe": "immediate|short-term|long-term"
 }
+
+Ensure all recommendations are specific, measurable, and include projected quantitative outcomes. Focus on the highest impact opportunities first.
 """
 
         try:
@@ -449,8 +496,13 @@ Please respond with a JSON object containing:
                 None, self.model.generate_content, prompt
             )
 
-            # Parse JSON from response
-            response_text = response.text.strip()
+            # Parse JSON from response using proper response parts accessor
+            response_text = ""
+            if response.candidates and response.candidates[0].content.parts:
+                response_text = response.candidates[0].content.parts[0].text.strip()
+            else:
+                response_text = response.text.strip()
+
             if response_text.startswith("```json"):
                 response_text = response_text[7:-3]
             elif response_text.startswith("```"):
@@ -490,10 +542,22 @@ class AgentOrchestrator:
         self.agents = {}
         self._register_agents(gemini_api_key)
 
-        # Configure Gemini
+        # Configure Gemini with optimized settings
         if gemini_api_key and gemini_api_key != "demo-key":
             genai.configure(api_key=gemini_api_key)
-            self.gemini_model = genai.GenerativeModel("gemini-1.5-flash")
+
+            # Optimized generation config for speed and quality
+            generation_config = genai.GenerationConfig(
+                temperature=0.7,  # Balanced creativity and consistency
+                top_p=0.8,       # Focus on most likely tokens
+                top_k=40,        # Reasonable candidate pool
+                max_output_tokens=2048,  # Sufficient for detailed responses
+            )
+
+            self.gemini_model = genai.GenerativeModel(
+                "gemini-2.5-flash",
+                generation_config=generation_config
+            )
         else:
             self.gemini_model = None
 
@@ -568,34 +632,61 @@ class AgentOrchestrator:
             )
             activity_summary = self._prepare_activity_summary(activities)
 
-            # Create prompt
+            # Create enhanced prompt for Gemini 2.5 Flash
             prompt = f"""
-            As an environmental expert, analyze this carbon footprint data:
+            You are an expert environmental analyst specializing in carbon footprint optimization. Analyze the following carbon emissions data and provide detailed, actionable insights.
 
-            Total emissions: {total_emissions:.2f} kg CO2e
-            Activities summary: {activity_summary}
+            ## CARBON FOOTPRINT DATA:
+            - Total emissions: {total_emissions:.2f} kg CO2e
+            - Activities breakdown: {activity_summary}
 
-            User question: {question or "Provide general insights and recommendations"}
+            ## USER QUERY:
+            {question or "Provide comprehensive analysis and optimization recommendations"}
 
-            Please provide:
-            1. Key insights about the user's carbon footprint
-            2. Specific recommendations for reduction
-            3. Comparison with typical footprint patterns
-            4. Priority actions based on impact potential
+            ## ANALYSIS FRAMEWORK:
+            Please provide a structured analysis covering:
 
-            Format your response as actionable insights with specific numbers where possible.
+            ### 1. IMPACT ASSESSMENT
+            - Compare user's {total_emissions:.2f} kg CO2e against global averages (typical: 4-16 tons/year)
+            - Identify highest impact categories and quantify their contribution
+            - Calculate potential reduction opportunities with specific percentages
+
+            ### 2. ACTIONABLE RECOMMENDATIONS
+            - **High Impact (>20% reduction potential)**: Immediate priority actions
+            - **Medium Impact (5-20% reduction)**: Secondary optimizations
+            - **Low Impact (<5% reduction)**: Long-term lifestyle adjustments
+            - Include specific numbers, timelines, and measurable outcomes
+
+            ### 3. BENCHMARKING & TRENDS
+            - Position against national/regional averages
+            - Seasonal patterns and optimization opportunities
+            - Progress tracking metrics and targets
+
+            ### 4. IMPLEMENTATION ROADMAP
+            - 30-day quick wins with expected CO2e savings
+            - 90-day strategic changes with implementation steps
+            - 1-year sustainability goals with milestone tracking
+
+            Provide specific, quantified recommendations with clear implementation guidance. Use data-driven insights and include projected emission reductions for each recommendation.
             """
 
             response = await asyncio.get_event_loop().run_in_executor(
                 None, self.gemini_model.generate_content, prompt
             )
 
+            # Extract response text using proper response parts accessor
+            response_text = ""
+            if response.candidates and response.candidates[0].content.parts:
+                response_text = response.candidates[0].content.parts[0].text.strip()
+            else:
+                response_text = response.text.strip()
+
             return {
-                "summary": response.text,
+                "summary": response_text,
                 "recommendations": self._extract_recommendations_from_text(
-                    response.text
+                    response_text
                 ),
-                "insights": response.text,
+                "insights": response_text,
                 "source": "Gemini AI",
             }
 
