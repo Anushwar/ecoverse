@@ -154,3 +154,9 @@ ecoverse.db
 # API keys and secrets
 secrets.json
 credentials.json
+
+# Large datasets (download separately)
+data/
+*.csv
+*.txt
+processed_data.json
