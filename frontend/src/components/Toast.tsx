@@ -82,11 +82,11 @@ const Toast = ({ id, type, title, message, duration = 5000, onRemove }: ToastPro
       exit={{ opacity: 0, y: 50, scale: 0.95 }}
       className={`max-w-md w-full min-w-0 ${config.bgColor} border ${config.borderColor} rounded-lg shadow-lg p-4 pointer-events-auto ring-1 ring-black ring-opacity-5`}
     >
-      <div className="flex">
+      <div className="flex items-start">
         <div className="flex-shrink-0">
           <Icon className={`h-5 w-5 ${config.iconColor}`} />
         </div>
-        <div className="ml-3 w-0 flex-1 min-w-0">
+        <div className="ml-3 flex-1 min-w-0">
           <p className={`text-sm font-medium ${config.titleColor} break-words`}>
             {title}
           </p>
@@ -96,7 +96,7 @@ const Toast = ({ id, type, title, message, duration = 5000, onRemove }: ToastPro
             </p>
           )}
         </div>
-        <div className="ml-4 flex-shrink-0 flex">
+        <div className="ml-4 flex-shrink-0">
           <button
             className={`rounded-md inline-flex ${config.textColor} hover:${config.titleColor} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
             onClick={() => {

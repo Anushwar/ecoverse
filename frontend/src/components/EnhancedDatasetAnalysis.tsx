@@ -278,7 +278,6 @@ const EnhancedDatasetAnalysis = ({ loading = false }: EnhancedDatasetAnalysisPro
                 created_at: new Date().toISOString(),
               }}
               showDatasetCitation={true}
-              onLearnMore={(insight) => setSelectedInsight(insight)}
             />
           ))
         ) : (
