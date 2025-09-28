@@ -1,9 +1,11 @@
-# FastAPI Backend for EcoVerse
+# FastAPI Backend for EcoVerse - Complete Implementation
 import os
-from datetime import datetime, timedelta
-from typing import Optional, Any
+from datetime import datetime, timedelta, timezone
+from typing import Any
+import uuid
+import logging
 
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -11,23 +13,41 @@ import uvicorn
 from dotenv import load_dotenv
 
 from app.models.models import (
-    User, CarbonActivity, AIRecommendation, CarbonInsight,
-    ActivityInput, CarbonCalculationResult, ActivityCategory,
-    UserProfile, UserSettings, LifestyleType
+    User,
+    CarbonActivity,
+    AIRecommendation,
+    CarbonInsight,
+    ActivityInput,
+    CarbonCalculationResult,
+    ActivityCategory,
+    UserProfile,
+    UserSettings,
+    LifestyleType,
+    RecommendationType,
+    InsightType,
+    Severity,
+    Difficulty,
+    Impact,
 )
 from app.services.carbon_calculator import CarbonCalculator
 from app.services.ai_agents import AgentOrchestrator
+from app.services.enhanced_dataset_processor import enhanced_dataset_processor
+from app.database import db_manager
 
 # Load environment variables
 load_dotenv()
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Initialize FastAPI app
 app = FastAPI(
     title="EcoVerse API",
-    description="AI-powered carbon footprint management platform",
+    description="AI-powered carbon footprint management platform with real dataset analysis",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
 )
 
 # CORS configuration
@@ -41,16 +61,8 @@ app.add_middleware(
 
 # Initialize components
 calculator = CarbonCalculator()
-orchestrator = AgentOrchestrator(
-    gemini_api_key=os.getenv("GEMINI_API_KEY", "demo-key")
-)
-security = HTTPBearer()
+orchestrator = AgentOrchestrator(gemini_api_key=os.getenv("GEMINI_API_KEY", "demo-key"))
 
-# In-memory storage (replace with database in production)
-users_db: dict[str, User] = {}
-activities_db: dict[str, list[CarbonActivity]] = {}
-recommendations_db: dict[str, list[AIRecommendation]] = {}
-insights_db: dict[str, list[CarbonInsight]] = {}
 
 # Pydantic models for API requests/responses
 class CreateUserRequest(BaseModel):
@@ -60,18 +72,21 @@ class CreateUserRequest(BaseModel):
     household_size: int
     lifestyle: LifestyleType
 
+
 class AddActivityRequest(BaseModel):
     category: ActivityCategory
     type: str
     amount: float
     unit: str
-    date: Optional[datetime] = None
-    location: Optional[str] = None
-    metadata: Optional[dict[str, Any]] = None
+    date: datetime | None = None
+    location: str | None = None
+    metadata: dict[str, Any] | None = None
+
 
 class AnalyzeFootprintRequest(BaseModel):
-    question: Optional[str] = None
+    question: str | None = None
     timeframe: str = "30d"
+
 
 class UserResponse(BaseModel):
     id: str
@@ -81,6 +96,7 @@ class UserResponse(BaseModel):
     settings: UserSettings
     created_at: datetime
 
+
 class DashboardResponse(BaseModel):
     total_emissions: float
     daily_average: float
@@ -89,70 +105,103 @@ class DashboardResponse(BaseModel):
     insights_count: int
     recommendations_count: int
 
+
 class AnalysisResponse(BaseModel):
     insights: list[CarbonInsight]
     recommendations: list[AIRecommendation]
     gemini_insight: dict[str, Any]
+    dataset_insights: list[dict[str, Any]]
+
 
 # Helper functions
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
+def get_current_user_id(credentials: HTTPAuthorizationCredentials = None) -> str:
     """Extract user ID from token (simplified for demo)"""
-    # In production, validate JWT token here
-    return credentials.credentials
+    if credentials and credentials.credentials:
+        return credentials.credentials
+    # Return demo user for testing
+    return "demo-user"
+
 
 def generate_demo_data(user_id: str) -> None:
     """Generate demo data for a new user"""
     demo_activities = [
         CarbonActivity(
-            id=f"act-{i}",
+            id=str(uuid.uuid4()),
             user_id=user_id,
             category=ActivityCategory.TRANSPORTATION,
             type="car_gasoline",
             amount=25.0,
             unit="miles",
             carbon_emission=10.1,
-            date=datetime.now() - timedelta(days=i),
-            source="manual"
-        ) for i in range(1, 8)
+            date=datetime.now(timezone.utc) - timedelta(days=i),
+            source="manual",
+        )
+        for i in range(1, 8)
     ]
 
-    demo_activities.extend([
-        CarbonActivity(
-            id=f"energy-{i}",
-            user_id=user_id,
-            category=ActivityCategory.ENERGY,
-            type="electricity",
-            amount=30.0,
-            unit="kwh",
-            carbon_emission=27.6,
-            date=datetime.now() - timedelta(days=i),
-            source="manual"
-        ) for i in range(1, 5)
-    ])
+    demo_activities.extend(
+        [
+            CarbonActivity(
+                id=str(uuid.uuid4()),
+                user_id=user_id,
+                category=ActivityCategory.ENERGY,
+                type="electricity",
+                amount=30.0,
+                unit="kwh",
+                carbon_emission=27.6,
+                date=datetime.now(timezone.utc) - timedelta(days=i),
+                source="manual",
+            )
+            for i in range(1, 5)
+        ]
+    )
 
-    activities_db[user_id] = demo_activities
+    # Add activities to database
+    for activity in demo_activities:
+        try:
+            db_manager.add_activity(activity)
+        except Exception as e:
+            logger.error(f"Error adding demo activity: {e}")
+
 
 # API Routes
 
+
 @app.get("/")
 async def root():
-    """Root endpoint"""
+    """Root endpoint with dataset information"""
+    dataset_summary = enhanced_dataset_processor.get_dataset_summary()
     return {
-        "message": "Welcome to EcoVerse API",
+        "message": "Welcome to EcoVerse API - AI-Powered Carbon Footprint Management",
+        "version": "1.0.0",
         "docs": "/docs",
-        "status": "healthy"
+        "status": "healthy",
+        "features": [
+            "Real dataset analysis from Kaggle",
+            "Gemini AI integration",
+            "Carbon footprint tracking",
+            "Personalized recommendations",
+        ],
+        "datasets_loaded": list(dataset_summary.keys()),
+        "dataset_info": {
+            "carbon_emission": "Individual Carbon Footprint Calculation - https://www.kaggle.com/datasets/dumanmesut/individual-carbon-footprint-calculation",
+            "iot_carbon": "IoT Carbon Footprint Dataset - https://www.kaggle.com/datasets/dawoodhuss227/iot-carbon-footprint-dataset",
+            "power_consumption": "UCI Individual Electric Power Consumption - https://archive.ics.uci.edu/dataset/235/individual+household+electric+power+consumption",
+        },
     }
+
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "timestamp": datetime.now()}
+    return {"status": "healthy", "timestamp": datetime.now(timezone.utc)}
+
 
 # User Management
 @app.post("/users", response_model=UserResponse)
 async def create_user(request: CreateUserRequest):
     """Create a new user"""
-    user_id = f"user-{len(users_db) + 1}"
+    user_id = str(uuid.uuid4())
 
     user = User(
         id=user_id,
@@ -161,52 +210,69 @@ async def create_user(request: CreateUserRequest):
         profile=UserProfile(
             location=request.location,
             household_size=request.household_size,
-            lifestyle=request.lifestyle
+            lifestyle=request.lifestyle,
         ),
-        settings=UserSettings()
+        settings=UserSettings(),
     )
 
-    users_db[user_id] = user
-    activities_db[user_id] = []
-    recommendations_db[user_id] = []
-    insights_db[user_id] = []
+    # Save to database
+    try:
+        db_manager.create_user(user)
+        # Generate demo data
+        generate_demo_data(user_id)
 
-    # Generate demo data
-    generate_demo_data(user_id)
+        return UserResponse(
+            id=user.id,
+            email=user.email,
+            name=user.name,
+            profile=user.profile,
+            settings=user.settings,
+            created_at=user.created_at,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create user: {e}")
 
-    return UserResponse(
-        id=user.id,
-        email=user.email,
-        name=user.name,
-        profile=user.profile,
-        settings=user.settings,
-        created_at=user.created_at
-    )
 
 @app.get("/users/me", response_model=UserResponse)
-async def get_current_user_info(user_id: str = Depends(get_current_user)):
+async def get_current_user_info():
     """Get current user information"""
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="User not found")
+    user_id = get_current_user_id()
 
-    user = users_db[user_id]
+    user = db_manager.get_user(user_id)
+    if not user:
+        # Create demo user if not exists
+        demo_user = User(
+            id=user_id,
+            email="demo@ecoverse.ai",
+            name="Demo User",
+            profile=UserProfile(
+                location="US", household_size=2, lifestyle=LifestyleType.MODERATE
+            ),
+            settings=UserSettings(),
+        )
+        db_manager.create_user(demo_user)
+        generate_demo_data(user_id)
+        user = demo_user
+
     return UserResponse(
         id=user.id,
         email=user.email,
         name=user.name,
         profile=user.profile,
         settings=user.settings,
-        created_at=user.created_at
+        created_at=user.created_at,
     )
 
+
 # Activity Management
-@app.post("/activities", response_model=CarbonCalculationResult)
-async def add_activity(
-    request: AddActivityRequest,
-    user_id: str = Depends(get_current_user)
-):
+@app.post("/activities")
+async def add_activity(request: AddActivityRequest):
     """Add a new carbon activity"""
-    if user_id not in users_db:
+    user_id = get_current_user_id()
+
+    # Ensure user exists
+    user = db_manager.get_user(user_id)
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     # Calculate carbon emission
@@ -215,204 +281,309 @@ async def add_activity(
         type=request.type,
         amount=request.amount,
         unit=request.unit,
-        date=request.date or datetime.now(),
+        date=request.date or datetime.now(timezone.utc),
         location=request.location,
-        metadata=request.metadata
+        metadata=request.metadata,
     )
 
     calculation_result = calculator.calculate_emission(activity_input)
 
-    # Create activity record
+    # Create activity
     activity = CarbonActivity(
-        id=f"act-{len(activities_db.get(user_id, [])) + 1}",
+        id=str(uuid.uuid4()),
         user_id=user_id,
         category=request.category,
         type=request.type,
         amount=request.amount,
         unit=request.unit,
         carbon_emission=calculation_result.carbon_emission,
-        date=activity_input.date,
-        location=request.location,
+        date=request.date or datetime.now(timezone.utc),
+        location=request.location or "US",
         metadata=request.metadata or {},
-        source="manual"
+        source="manual",
     )
 
-    # Store activity
-    if user_id not in activities_db:
-        activities_db[user_id] = []
-    activities_db[user_id].append(activity)
+    # Save to database
+    try:
+        db_manager.add_activity(activity)
 
-    return calculation_result
+        return {
+            "id": activity.id,
+            "category": activity.category,
+            "type": activity.type,
+            "amount": activity.amount,
+            "unit": activity.unit,
+            "carbon_emission": activity.carbon_emission,
+            "calculation_result": calculation_result,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to add activity: {e}")
 
-@app.get("/activities", response_model=list[CarbonActivity])
-async def get_activities(
-    user_id: str = Depends(get_current_user),
-    category: Optional[ActivityCategory] = None,
-    limit: int = 50
-):
-    """Get user's carbon activities"""
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="User not found")
 
-    activities = activities_db.get(user_id, [])
+@app.get("/activities")
+async def get_activities(limit: int = Query(default=50, le=200)):
+    """Get user's activities"""
+    user_id = get_current_user_id()
 
-    if category:
-        activities = [a for a in activities if a.category == category]
+    try:
+        activities = db_manager.get_user_activities(user_id, limit)
+        return activities
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get activities: {e}")
 
-    return activities[-limit:]  # Return most recent activities
 
 # Dashboard
 @app.get("/dashboard", response_model=DashboardResponse)
-async def get_dashboard(user_id: str = Depends(get_current_user)):
-    """Get user dashboard data"""
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="User not found")
+async def get_dashboard():
+    """Get dashboard data with dataset insights"""
+    user_id = get_current_user_id()
 
-    activities = activities_db.get(user_id, [])
-    insights = insights_db.get(user_id, [])
-    recommendations = recommendations_db.get(user_id, [])
+    try:
+        activities = db_manager.get_user_activities(user_id, 100)
+        insights = db_manager.get_user_insights(user_id, 10)
+        recommendations = db_manager.get_user_recommendations(user_id, 10)
 
-    # Calculate metrics
-    total_emissions = sum(a.carbon_emission for a in activities)
-    daily_average = total_emissions / max(len(activities), 1)
+        # Calculate metrics
+        total_emissions = sum(act.carbon_emission for act in activities)
+        daily_average = total_emissions / max(
+            len(set(act.date.date() for act in activities)), 1
+        )
 
-    # Get trends
-    trends = calculator.calculate_trends(activities)
-    weekly_trend = trends.get("trend", "stable")
+        # Determine weekly trend (simplified)
+        if len(activities) >= 7:
+            recent_week = [act for act in activities[:7]]
+            older_week = (
+                [act for act in activities[7:14]] if len(activities) >= 14 else []
+            )
+            recent_emissions = sum(act.carbon_emission for act in recent_week)
+            older_emissions = (
+                sum(act.carbon_emission for act in older_week)
+                if older_week
+                else recent_emissions
+            )
 
-    # Get top category
-    category_totals = calculator.calculate_category_breakdown(activities)
-    top_category = "none"
-    if category_totals:
-        top_category = max(category_totals.keys(),
-                          key=lambda k: category_totals[k]["total"])
+            if recent_emissions > older_emissions * 1.1:
+                weekly_trend = "increasing"
+            elif recent_emissions < older_emissions * 0.9:
+                weekly_trend = "decreasing"
+            else:
+                weekly_trend = "stable"
+        else:
+            weekly_trend = "insufficient_data"
 
-    return DashboardResponse(
-        total_emissions=round(total_emissions, 2),
-        daily_average=round(daily_average, 2),
-        weekly_trend=weekly_trend,
-        top_category=top_category,
-        insights_count=len(insights),
-        recommendations_count=len(recommendations)
-    )
+        # Find top category
+        category_emissions = {}
+        for activity in activities:
+            cat = activity.category.value
+            category_emissions[cat] = (
+                category_emissions.get(cat, 0) + activity.carbon_emission
+            )
+
+        top_category = (
+            max(category_emissions.items(), key=lambda x: x[1])[0]
+            if category_emissions
+            else "transportation"
+        )
+
+        return DashboardResponse(
+            total_emissions=round(total_emissions, 2),
+            daily_average=round(daily_average, 2),
+            weekly_trend=weekly_trend,
+            top_category=top_category,
+            insights_count=len(insights),
+            recommendations_count=len(recommendations),
+        )
+    except Exception as e:
+        logger.error(f"Dashboard error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load dashboard data")
+
 
 # AI Analysis
 @app.post("/analyze", response_model=AnalysisResponse)
-async def analyze_footprint(
-    request: AnalyzeFootprintRequest,
-    user_id: str = Depends(get_current_user)
-):
-    """Analyze carbon footprint using AI agents"""
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    user = users_db[user_id]
-    activities = activities_db.get(user_id, [])
+async def analyze_footprint(request: AnalyzeFootprintRequest):
+    """Analyze user's carbon footprint with AI and dataset insights"""
+    user_id = get_current_user_id()
 
     try:
-        # Run AI analysis
-        results = await orchestrator.execute_workflow({
+        user = db_manager.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        activities = db_manager.get_user_activities(user_id, 100)
+
+        # Convert activities to dict format for dataset processor
+        activity_dicts = [
+            {
+                "carbon_emission": act.carbon_emission,
+                "category": act.category.value,
+                "type": act.type,
+                "amount": act.amount,
+                "unit": act.unit,
+                "date": act.date.isoformat(),
+            }
+            for act in activities
+        ]
+
+        # Get AI analysis
+        analysis_data = {
             "user": user,
             "activities": activities,
-            "question": request.question
-        })
+            "timeframe": request.timeframe,
+            "question": request.question,
+        }
 
-        # Store results
-        insights_db[user_id] = results["insights"]
-        recommendations_db[user_id] = results["recommendations"]
+        # Get insights from AI agents
+        ai_insights = await orchestrator.analyze_carbon_footprint(analysis_data)
+
+        # Get dataset-based insights
+        dataset_insights = enhanced_dataset_processor.get_personalized_insights(
+            activity_dicts,
+            {
+                "location": user.profile.location,
+                "lifestyle": user.profile.lifestyle.value,
+            },
+        )
+
+        # Get Gemini insights
+        gemini_insight = await orchestrator.get_gemini_insights(
+            activities, request.question
+        )
+
+        # Save insights to database
+        for insight in ai_insights.get("insights", []):
+            try:
+                db_manager.add_insight(insight)
+            except Exception as e:
+                logger.error(f"Failed to save insight: {e}")
+
+        # Save recommendations to database
+        for rec in ai_insights.get("recommendations", []):
+            try:
+                db_manager.add_recommendation(rec)
+            except Exception as e:
+                logger.error(f"Failed to save recommendation: {e}")
+
+        # Format dataset insights for response
+        formatted_dataset_insights = [
+            {
+                "title": insight.title,
+                "description": insight.description,
+                "data": insight.data,
+                "confidence": insight.confidence,
+                "source": insight.source_dataset,
+                "type": insight.insight_type,
+            }
+            for insight in dataset_insights
+        ]
 
         return AnalysisResponse(
-            insights=results["insights"],
-            recommendations=results["recommendations"],
-            gemini_insight=results["gemini_insight"]
+            insights=ai_insights.get("insights", []),
+            recommendations=ai_insights.get("recommendations", []),
+            gemini_insight=gemini_insight,
+            dataset_insights=formatted_dataset_insights,
         )
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Analysis failed: {str(e)}"
-        )
+        logger.error(f"Analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {e!s}")
 
-@app.get("/insights", response_model=list[CarbonInsight])
-async def get_insights(user_id: str = Depends(get_current_user)):
-    """Get user's carbon insights"""
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="User not found")
 
-    return insights_db.get(user_id, [])
-
-@app.get("/recommendations", response_model=list[AIRecommendation])
-async def get_recommendations(user_id: str = Depends(get_current_user)):
-    """Get user's AI recommendations"""
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    return recommendations_db.get(user_id, [])
-
-# Statistics
-@app.get("/stats/trends")
-async def get_trends(user_id: str = Depends(get_current_user)):
-    """Get emission trends"""
-    if user_id not in users_db:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    activities = activities_db.get(user_id, [])
-    trends = calculator.calculate_trends(activities)
-    daily_footprint = calculator.calculate_daily_footprint(activities)
-    category_breakdown = calculator.calculate_category_breakdown(activities)
-
-    return {
-        "trends": trends,
-        "daily_footprint": daily_footprint,
-        "category_breakdown": category_breakdown
-    }
-
-# Quick calculations
-@app.post("/calculate")
-async def quick_calculate(activity_input: ActivityInput):
-    """Quick carbon emission calculation"""
+# Dataset Endpoints
+@app.get("/datasets/summary")
+async def get_dataset_summary():
+    """Get summary of loaded datasets"""
     try:
-        result = calculator.calculate_emission(activity_input)
-        return result
+        summary = enhanced_dataset_processor.get_dataset_summary()
+        insights = enhanced_dataset_processor.get_all_insights()
+
+        return {
+            "datasets": summary,
+            "total_insights": sum(
+                len(insight_list) for insight_list in insights.values()
+            ),
+            "insight_categories": list(insights.keys()),
+            "citations": {
+                "carbon_emission": "Individual Carbon Footprint Calculation - https://www.kaggle.com/datasets/dumanmesut/individual-carbon-footprint-calculation",
+                "iot_carbon": "IoT Carbon Footprint Dataset - https://www.kaggle.com/datasets/dawoodhuss227/iot-carbon-footprint-dataset",
+                "power_consumption": "UCI Individual Electric Power Consumption - https://archive.ics.uci.edu/dataset/235/individual+household+electric+power+consumption",
+            },
+        }
     except Exception as e:
         raise HTTPException(
-            status_code=400,
-            detail=f"Calculation failed: {str(e)}"
+            status_code=500, detail=f"Failed to get dataset summary: {e}"
         )
 
-# Demo endpoints
-@app.get("/demo/categories")
-async def get_demo_categories():
-    """Get available activity categories for demo"""
-    return {
-        "categories": [
-            {
-                "name": "Transportation",
-                "value": "transportation",
-                "types": ["car_gasoline", "car_electric", "bus", "train", "flight_domestic"]
-            },
-            {
-                "name": "Energy",
-                "value": "energy",
-                "types": ["electricity", "natural_gas", "heating_oil"]
-            },
-            {
-                "name": "Food",
-                "value": "food",
-                "types": ["beef", "chicken", "fish", "vegetables", "dairy"]
-            },
-            {
-                "name": "Waste",
-                "value": "waste",
-                "types": ["landfill", "recycling", "composting"]
-            }
-        ]
-    }
+
+@app.get("/datasets/insights")
+async def get_dataset_insights():
+    """Get all insights from dataset analysis"""
+    try:
+        insights = enhanced_dataset_processor.get_all_insights()
+
+        # Format insights for API response
+        formatted_insights = {}
+        for category, insight_list in insights.items():
+            formatted_insights[category] = [
+                {
+                    "title": insight.title,
+                    "description": insight.description,
+                    "data": insight.data,
+                    "confidence": insight.confidence,
+                    "source": insight.source_dataset,
+                    "type": insight.insight_type,
+                }
+                for insight in insight_list
+            ]
+
+        return formatted_insights
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get dataset insights: {e}"
+        )
+
+
+@app.get("/insights")
+async def get_user_insights(limit: int = Query(default=20, le=100)):
+    """Get user's personal insights"""
+    user_id = get_current_user_id()
+
+    try:
+        insights = db_manager.get_user_insights(user_id, limit)
+        return insights
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get insights: {e}")
+
+
+@app.get("/recommendations")
+async def get_user_recommendations(limit: int = Query(default=20, le=100)):
+    """Get user's recommendations"""
+    user_id = get_current_user_id()
+
+    try:
+        recommendations = db_manager.get_user_recommendations(user_id, limit)
+        return recommendations
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get recommendations: {e}"
+        )
+
+
+# Initialize database and start server
+@app.on_event("startup")
+async def startup_event():
+    """Initialize application on startup"""
+    logger.info("Starting EcoVerse API...")
+    logger.info(
+        f"Datasets available: {list(enhanced_dataset_processor.datasets.keys())}"
+    )
+    logger.info("Database initialized")
+    logger.info("Enhanced dataset processor loaded")
+
 
 if __name__ == "__main__":
     uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
+        app,
+        host="127.0.0.1",  # Changed from 0.0.0.0 for security
         port=8000,
-        reload=True
+        reload=True,
     )
